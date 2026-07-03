@@ -14,6 +14,9 @@ import { Contrail } from './contrail';
 import { Explosion } from './explosion';
 import { LandmarkManager } from './landmarks';
 import { AudioManager } from './audio';
+import { Ambient } from './ambient';
+import { regionAt } from './regions';
+import { LANDMARKS } from './landmark-data';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
 import { dirToLatLon, RAD2DEG } from './util';
 
@@ -44,6 +47,7 @@ export class Game {
   private contrail!: Contrail;
   private explosion!: Explosion;
   private landmarks!: LandmarkManager;
+  private ambient!: Ambient;
   private audio = new AudioManager();
   private input = new Input();
 
@@ -55,6 +59,8 @@ export class Game {
   private elapsed = 0;
   private hudTimer = 0;
   private posTimer = 0;
+  private regionTimer = 0;
+  private lastRegion = '';
   private menuAngle = 0;
   private raf = 0;
   private disposed = false;
@@ -117,12 +123,14 @@ export class Game {
 
     progress(50, 'Filling the oceans');
     await nextFrame();
-    this.water = new Water();
+    this.water = new Water(this.terrain);
     this.scene.add(this.water.mesh);
     this.sky = new Sky();
     this.scene.add(this.sky.group);
     this.clouds = buildClouds();
     this.scene.add(this.clouds);
+    this.ambient = new Ambient(this.terrain);
+    this.scene.add(this.ambient.group);
 
     progress(66, 'Raising landmarks');
     await nextFrame();
@@ -166,6 +174,11 @@ export class Game {
 
   start(): void {
     this.audio.init();
+    const at = new URLSearchParams(window.location.search).get('at');
+    if (at) {
+      const def = LANDMARKS.find((lm) => lm.id === at);
+      if (def) this.flight.reset(def.lat, def.lon - 1.5, 90, 150);
+    }
     this.mode = 'playing';
     this.rig.beginTransition();
   }
@@ -305,8 +318,9 @@ export class Game {
     // Environment
     const playerUp = vTmp.copy(this.mode === 'menu' ? this.camera.position : this.flight.pos).normalize();
     this.sky.update(dt, this.camera.position, playerUp);
-    this.water.update(this.elapsed);
+    this.water.update(this.elapsed, this.sky.sunDir, this.sky.dayMix);
     updateClouds(this.clouds, dt);
+    this.ambient.update(this.elapsed);
     this.updateLighting();
 
     // Audio
@@ -321,6 +335,7 @@ export class Game {
         speed: Math.round(this.flight.speed),
         heading: Math.round(this.flight.heading),
         throttle: this.flight.throttle,
+        dist: this.flight.distance,
         maxSpeed: MAX_SPEED
       });
     }
@@ -329,6 +344,17 @@ export class Game {
       this.posTimer = 0.25;
       const { lat, lon } = dirToLatLon(vTmp.copy(this.flight.pos).normalize());
       bus.emit('pos', { lat: lat * RAD2DEG, lon: lon * RAD2DEG, heading: this.flight.heading });
+    }
+    this.regionTimer -= dt;
+    if (playing && this.regionTimer <= 0) {
+      this.regionTimer = 0.6;
+      vTmp.copy(this.flight.pos).normalize();
+      const info = regionAt(vTmp, this.terrain.height(vTmp) > 0.5);
+      const key = `${info.primary}|${info.secondary ?? ''}`;
+      if (key !== this.lastRegion) {
+        this.lastRegion = key;
+        bus.emit('region', info);
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -340,7 +366,7 @@ export class Game {
 
     this.sun.intensity = 0.25 + day * 2.1;
     this.sun.color.setHex(0xffffff).lerp(new THREE.Color(0xffb070), golden);
-    this.hemi.intensity = 0.22 + day * 0.5;
+    this.hemi.intensity = 0.32 + day * 0.6;
 
     const anchor = this.mode === 'menu' ? this.camera.position : this.flight.pos;
     if (this.sun.castShadow) {

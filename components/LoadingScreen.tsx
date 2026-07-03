@@ -24,7 +24,7 @@ export default function LoadingScreen() {
         {LETTERS.map((letter, i) => (
           <div
             key={i}
-            className="animate-brick-pop relative flex h-14 w-12 items-center justify-center rounded-lg text-2xl font-black text-white shadow-lg sm:h-16 sm:w-14 sm:text-3xl"
+            className="animate-brick-pop font-display relative flex h-14 w-12 items-center justify-center rounded-lg text-2xl font-extrabold text-white shadow-lg sm:h-16 sm:w-14 sm:text-3xl"
             style={{ backgroundColor: COLORS[i], animationDelay: `${i * 0.12}s` }}
           >
             <span className="absolute -top-1.5 left-2 h-2 w-3 rounded-sm opacity-80" style={{ backgroundColor: COLORS[i] }} />

@@ -11,16 +11,14 @@ export interface QualityPreset {
   fieldN: number;
   /** Half-extent within which studs are instanced. 0 disables studs. */
   studN: number;
-  /** Half-extent of translucent water tiles. */
-  waterN: number;
   shadows: boolean;
   maxDpr: number;
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
-  low: { fieldN: 20, studN: 0, waterN: 8, shadows: false, maxDpr: 1 },
-  medium: { fieldN: 30, studN: 16, waterN: 10, shadows: false, maxDpr: 1.5 },
-  high: { fieldN: 44, studN: 26, waterN: 13, shadows: true, maxDpr: 2 }
+  low: { fieldN: 20, studN: 0, shadows: false, maxDpr: 1 },
+  medium: { fieldN: 30, studN: 16, shadows: false, maxDpr: 1.5 },
+  high: { fieldN: 44, studN: 26, shadows: true, maxDpr: 2 }
 };
 
 const KEY = 'brickfly.settings';

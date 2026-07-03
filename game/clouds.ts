@@ -11,7 +11,7 @@ function seeded(seed: number): () => number {
 }
 
 /** Chunky brick-cluster clouds drifting slowly around the planet. */
-export function buildClouds(count = 42): THREE.Group {
+export function buildClouds(count = 64): THREE.Group {
   const group = new THREE.Group();
   const rand = seeded(99);
 
@@ -30,14 +30,14 @@ export function buildClouds(count = 42): THREE.Group {
     tangentBasis(up, east, north);
     basisQuat(east, up, north, q);
 
-    const alt = PLANET_R + 260 + rand() * 130;
+    const alt = PLANET_R + 340 + rand() * 260;
     const center = up.clone().multiplyScalar(alt);
     const parts = 4 + Math.floor(rand() * 7);
     for (let p = 0; p < parts; p++) {
-      const ox = (rand() - 0.5) * 90;
-      const oz = (rand() - 0.5) * 55;
-      const oy = (rand() - 0.5) * 14;
-      const w = 22 + rand() * 34;
+      const ox = (rand() - 0.5) * 120;
+      const oz = (rand() - 0.5) * 75;
+      const oy = (rand() - 0.5) * 16;
+      const w = 26 + rand() * 46;
       const pos = center
         .clone()
         .addScaledVector(east, ox)

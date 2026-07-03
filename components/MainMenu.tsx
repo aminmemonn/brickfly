@@ -17,10 +17,14 @@ export default function MainMenu({ discovered, onPlay, onSettings }: Props) {
 
   return (
     <div className="fixed inset-0 z-20 flex flex-col animate-fade-in">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/70" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/75" />
 
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <div className="mb-5 flex gap-2.5">
+        <div className="glass mb-6 rounded-full px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/60">
+          A tiny planet of bricks · ten wonders
+        </div>
+
+        <div className="animate-float-soft mb-4 flex gap-2.5">
           {STUD_COLORS.map((c, i) => (
             <span
               key={i}
@@ -29,45 +33,63 @@ export default function MainMenu({ discovered, onPlay, onSettings }: Props) {
             />
           ))}
         </div>
-        <h1 className="text-7xl font-black tracking-tighter drop-shadow-2xl sm:text-8xl">
+
+        <h1 className="title-glow font-display text-7xl font-extrabold tracking-tight sm:text-8xl">
           BRICK<span className="text-[#f7d354]">FLY</span>
         </h1>
-        <p className="mt-3 max-w-md text-sm font-medium text-white/65 sm:text-base">
-          Fly the whole world, brick by brick. Ten wonders are waiting to be discovered.
+        <p className="mt-4 max-w-md text-sm font-medium text-white/70 sm:text-base">
+          Circle a hand-built Earth. Chase sunsets over brick oceans and find every wonder.
         </p>
 
-        <div className="mt-10 flex w-64 flex-col gap-3">
+        <div className="mt-10 flex w-72 flex-col gap-3">
           <button
             onClick={onPlay}
-            className="spring rounded-2xl bg-white px-8 py-4 text-base font-bold text-black shadow-xl hover:scale-[1.04] active:scale-95"
+            className="spring font-display rounded-2xl bg-[#f7d354] px-8 py-4 text-lg font-extrabold tracking-tight text-black shadow-[0_12px_40px_rgba(247,211,84,0.35)] hover:scale-[1.04] hover:shadow-[0_16px_50px_rgba(247,211,84,0.5)] active:scale-95"
           >
             Take Flight
           </button>
-          <button
-            onClick={() => setShowCollection(true)}
-            className="spring glass rounded-2xl px-8 py-3.5 text-sm font-semibold hover:scale-[1.04] active:scale-95"
-          >
-            Collection
-            <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold">
-              {discovered.length}/{LANDMARKS.length}
-            </span>
-          </button>
-          <button
-            onClick={onSettings}
-            className="spring glass rounded-2xl px-8 py-3.5 text-sm font-semibold hover:scale-[1.04] active:scale-95"
-          >
-            Settings
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowCollection(true)}
+              className="spring glass flex-1 rounded-2xl px-4 py-3.5 text-sm font-semibold hover:scale-[1.04] active:scale-95"
+            >
+              Collection
+              <span className="ml-2 rounded-full bg-[#f7d354]/20 px-2 py-0.5 text-xs font-bold text-[#f7d354]">
+                {discovered.length}/{LANDMARKS.length}
+              </span>
+            </button>
+            <button
+              onClick={onSettings}
+              className="spring glass flex-1 rounded-2xl px-4 py-3.5 text-sm font-semibold hover:scale-[1.04] active:scale-95"
+            >
+              Settings
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="relative pb-6 text-center text-[11px] font-medium tracking-wide text-white/40">
-        W/S pitch · A/D roll · Q/E yaw · Space/Shift throttle · 1–4 cameras · drag to look
+      <div className="relative flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pb-6 text-[11px] font-medium text-white/45">
+        <span>
+          <span className="kbd">W</span> <span className="kbd">S</span> pitch
+        </span>
+        <span>
+          <span className="kbd">A</span> <span className="kbd">D</span> roll
+        </span>
+        <span>
+          <span className="kbd">Q</span> <span className="kbd">E</span> yaw
+        </span>
+        <span>
+          <span className="kbd">Space</span> <span className="kbd">Shift</span> throttle
+        </span>
+        <span>
+          <span className="kbd">1</span>–<span className="kbd">4</span> cameras
+        </span>
+        <span>drag to look</span>
       </div>
 
       {showCollection && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in"
           onClick={() => setShowCollection(false)}
         >
           <div
@@ -76,7 +98,7 @@ export default function MainMenu({ discovered, onPlay, onSettings }: Props) {
           >
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black tracking-tight">Collection</h2>
+                <h2 className="font-display text-2xl font-extrabold tracking-tight">Collection</h2>
                 <p className="text-xs text-white/50">
                   {discovered.length} of {LANDMARKS.length} landmarks discovered
                 </p>
@@ -94,12 +116,14 @@ export default function MainMenu({ discovered, onPlay, onSettings }: Props) {
                 return (
                   <div
                     key={lm.id}
-                    className={`rounded-2xl border p-4 ${
-                      isFound ? 'border-[#f7d354]/40 bg-[#f7d354]/10' : 'border-white/10 bg-white/[0.04]'
+                    className={`spring rounded-2xl border p-4 ${
+                      isFound
+                        ? 'border-[#f7d354]/40 bg-[#f7d354]/10'
+                        : 'border-white/10 bg-white/[0.04]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className={`text-sm font-bold ${isFound ? '' : 'text-white/45'}`}>
+                      <h3 className={`font-display text-sm font-bold ${isFound ? '' : 'text-white/45'}`}>
                         {isFound ? lm.name : '???'}
                       </h3>
                       {isFound && (

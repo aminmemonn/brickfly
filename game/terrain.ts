@@ -4,21 +4,28 @@ import { PLANET_R } from './constants';
 import { clamp, smoothstep, latLonToDir, DEG2RAD } from './util';
 import { LANDMARKS } from './landmark-data';
 
-/** Stylized continental plates: [latDeg, lonDeg, angular radius in radians]. */
+/**
+ * Stylized continental plates: [latDeg, lonDeg, angular radius in radians].
+ * Overlapping caps approximate real-world landmass shapes.
+ */
 const CONTINENTS: [number, number, number][] = [
-  [8, 22, 0.55],     // Africa
-  [52, 70, 0.72],    // Central Eurasia
-  [50, 18, 0.38],    // Europe
-  [22, 78, 0.28],    // Indian subcontinent
-  [32, 108, 0.42],   // East Asia
-  [46, -100, 0.55],  // North America
-  [-14, -58, 0.45],  // South America
-  [-25, 134, 0.32],  // Australia
-  [-88, 0, 0.42],    // Antarctica
-  [74, -41, 0.2],    // Greenland
-  [36, 138, 0.14],   // Japan
-  [54, -3, 0.13],    // Britain
-  [24, 47, 0.3]      // Arabian peninsula
+  // Africa
+  [2, 18, 0.42], [18, 8, 0.3], [28, 25, 0.22], [-15, 25, 0.28], [-19, 47, 0.09],
+  // Europe
+  [48, 12, 0.2], [54, -2, 0.12], [63, 15, 0.18], [41, -4, 0.13], [55, 40, 0.24],
+  // Asia
+  [62, 90, 0.42], [55, 125, 0.3], [38, 65, 0.25], [24, 45, 0.24], [32, 55, 0.2],
+  [22, 78, 0.24], [32, 105, 0.33], [45, 118, 0.22], [36, 138, 0.12], [14, 102, 0.16],
+  [-2, 115, 0.14], [-6, 141, 0.16],
+  // North America
+  [62, -105, 0.38], [48, -100, 0.3], [38, -98, 0.28], [38, -78, 0.2], [39, -115, 0.2],
+  [64, -152, 0.18], [74, -41, 0.18], [22, -102, 0.16], [8, -80, 0.1],
+  // South America
+  [-3, -60, 0.3], [-15, -55, 0.26], [-30, -65, 0.22], [-45, -70, 0.14],
+  // Oceania
+  [-25, 134, 0.28], [-31, 148, 0.14], [-42, 172, 0.1],
+  // Poles
+  [-88, 0, 0.4]
 ];
 
 interface Anchor {
@@ -81,13 +88,13 @@ export class Terrain {
     const e = m * 1.05 + n * 0.32 - 0.58;
     let h: number;
     if (e > 0) {
-      h = Math.pow(e, 0.85) * 70;
+      h = Math.pow(e, 0.85) * 110;
       const ridge = 1 - Math.abs(this.noise.noise3(d.x * 5 + 9, d.y * 5, d.z * 5));
-      h += smoothstep(0.25, 0.6, e) * ridge * 55;
+      h += smoothstep(0.25, 0.6, e) * ridge * 90;
     } else {
-      h = e * 90;
+      h = e * 140;
     }
-    return clamp(h, -70, 120);
+    return clamp(h, -110, 220);
   }
 
   /** Terrain height including landmark plateaus. */
@@ -106,15 +113,15 @@ export class Terrain {
   /** Biome color for a point. h <= 0.5 is treated as sea floor. */
   colorAt(d: THREE.Vector3, h: number, out: THREE.Color): THREE.Color {
     if (h <= 0.5) {
-      const depth = clamp(-h / 60, 0, 1);
+      const depth = clamp(-h / 100, 0, 1);
       return out.copy(PALETTE.floor).lerp(PALETTE.deepFloor, depth);
     }
     const lat = Math.abs(Math.asin(clamp(d.y, -1, 1)));
     const v = this.noise.noise3(d.x * 7.3 + 11, d.y * 7.3, d.z * 7.3);
-    if (h > 74 || lat > 1.15 - h * 0.004) return out.copy(PALETTE.snow);
-    if (h > 50) return out.copy(v > 0 ? PALETTE.rock1 : PALETTE.rock2);
-    if (h < 3.5) return out.copy(PALETTE.beach);
-    if (lat > 0.28 && lat < 0.6 && v > -0.25 && h < 26) {
+    if (h > 140 || lat > 1.15 - h * 0.0022) return out.copy(PALETTE.snow);
+    if (h > 85) return out.copy(v > 0 ? PALETTE.rock1 : PALETTE.rock2);
+    if (h < 5) return out.copy(PALETTE.beach);
+    if (lat > 0.28 && lat < 0.6 && v > -0.25 && h < 45) {
       return out.copy(v > 0.3 ? PALETTE.desert2 : PALETTE.desert1);
     }
     if (v > 0.42) return out.copy(PALETTE.forest);
@@ -138,7 +145,7 @@ export class Terrain {
         const hh = this.rawHeight(dir);
         const idx = (y * w + x) * 4;
         if (hh <= 0.5) {
-          const c = new THREE.Color(hh > -14 ? MAP_SHALLOW : MAP_DEEP);
+          const c = new THREE.Color(hh > -22 ? MAP_SHALLOW : MAP_DEEP);
           img.data[idx] = c.r * 255;
           img.data[idx + 1] = c.g * 255;
           img.data[idx + 2] = c.b * 255;

@@ -96,6 +96,7 @@ export class Flight {
   speed = 120;
   throttle = 0.55;
   crashed = false;
+  distance = 0;
 
   private respawnTimer = 0;
 
@@ -108,7 +109,7 @@ export class Flight {
     this.pos.copy(up).multiplyScalar(PLANET_R + alt);
     this.setLevelHeading(headingDeg * DEG2RAD);
     this.speed = 120;
-    this.throttle = 0.55;
+    this.throttle = 0.45;
     this.crashed = false;
   }
 
@@ -193,6 +194,7 @@ export class Flight {
     vFwd.set(0, 0, -1).applyQuaternion(this.quat);
     this.velocity.copy(vFwd).multiplyScalar(this.speed);
     this.pos.addScaledVector(this.velocity, dt);
+    this.distance += this.speed * dt;
     vUpNew.copy(this.pos).normalize();
     qTmp.setFromUnitVectors(vUpOld, vUpNew);
     this.quat.premultiply(qTmp);

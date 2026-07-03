@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PLANET_R } from './constants';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
-import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, DEG2RAD } from './util';
+import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, hash2, DEG2RAD } from './util';
 import { bus } from './bus';
 
 const DISCOVERED_KEY = 'brickfly.discovered';
@@ -17,12 +17,15 @@ interface BrickSpec {
   color: number;
   ry: number;
   studs: boolean;
+  glow: boolean;
 }
 
 const sharedBrickGeo = makeAOBox();
 const sharedStudGeo = new THREE.CylinderGeometry(1.5, 1.5, 1.3, 10);
 const brickMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.04 });
 const studMat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.04 });
+const sharedGlowGeo = new THREE.BoxGeometry(1, 1, 1);
+const glowMat = new THREE.MeshBasicMaterial();
 
 /** Collects axis-aligned (plus Y-rotated) bricks in a local tangent frame. */
 class Bricks {
@@ -36,7 +39,7 @@ class Bricks {
     h: number,
     d: number,
     color: number,
-    opts: { ry?: number; studs?: boolean } = {}
+    opts: { ry?: number; studs?: boolean; glow?: boolean } = {}
   ): void {
     this.list.push({
       x,
@@ -47,13 +50,16 @@ class Bricks {
       d,
       color,
       ry: opts.ry ?? 0,
-      studs: opts.studs ?? false
+      studs: opts.studs ?? false,
+      glow: opts.glow ?? false
     });
   }
 
   build(): THREE.Group {
     const group = new THREE.Group();
-    const bricks = new THREE.InstancedMesh(sharedBrickGeo, brickMat, this.list.length);
+    const solid = this.list.filter((b) => !b.glow);
+    const glows = this.list.filter((b) => b.glow);
+    const bricks = new THREE.InstancedMesh(sharedBrickGeo, brickMat, solid.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
@@ -64,7 +70,7 @@ class Bricks {
     const studXf: THREE.Matrix4[] = [];
     const studCols: THREE.Color[] = [];
 
-    this.list.forEach((b, i) => {
+    solid.forEach((b, i) => {
       e.set(0, b.ry, 0);
       q.setFromEuler(e);
       pos.set(b.x, b.y + b.h / 2, b.z);
@@ -109,6 +115,22 @@ class Bricks {
       group.add(studs);
     }
 
+    if (glows.length > 0) {
+      const glow = new THREE.InstancedMesh(sharedGlowGeo, glowMat, glows.length);
+      glows.forEach((b, i) => {
+        e.set(0, b.ry, 0);
+        q.setFromEuler(e);
+        pos.set(b.x, b.y + b.h / 2, b.z);
+        scale.set(b.w, b.h, b.d);
+        m.compose(pos, q, scale);
+        glow.setMatrixAt(i, m);
+        glow.setColorAt(i, col.setHex(b.color));
+      });
+      glow.instanceMatrix.needsUpdate = true;
+      if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
+      group.add(glow);
+    }
+
     return group;
   }
 }
@@ -143,48 +165,85 @@ function eiffel(B: Bricks): void {
 }
 
 function nyc(B: Bricks): void {
-  const towers: [number, number, number, number, number, number][] = [
-    [-40, -22, 14, 14, 44, 0x9aa2ab],
-    [-20, -36, 12, 12, 36, 0x7f8790],
-    [-42, 12, 12, 12, 52, 0xb0b6bd],
-    [24, -30, 13, 13, 40, 0x89929b],
-    [42, -6, 11, 11, 58, 0x9aa2ab],
-    [26, 24, 14, 14, 34, 0x7f8790],
-    [-14, 32, 12, 12, 46, 0xb0b6bd],
-    [6, 42, 10, 10, 30, 0x89929b],
-    [46, 28, 10, 10, 42, 0x9aa2ab],
-    [-56, -4, 10, 10, 30, 0x848c95],
-    [2, -48, 10, 10, 26, 0xa7adb4],
-    [-28, 8, 9, 9, 38, 0x8d959e]
-  ];
-  for (const [x, z, w, d, h, color] of towers) {
-    B.add(x, 0, z, w, h, d, color, { studs: true });
-    for (let y = 7; y < h - 5; y += 10) {
-      B.add(x, y, z, w + 0.7, 1.1, d + 0.7, 0xf7d354);
+  const greys = [0x9aa2ab, 0x7f8790, 0xb0b6bd, 0x89929b, 0x848c95, 0xa7adb4];
+  const glowColors = [0x28d8ff, 0xff3d8e, 0xffd428, 0x7cff3a, 0xff7a1a, 0x9d5cff];
+  const win = 0xf7d354;
+
+  // Island street plate
+  B.add(0, 0, 5, 152, 3, 300, 0x565b63);
+
+  // Central Park up north
+  B.add(0, 3, -100, 92, 2.5, 66, 0x3fa021, { studs: true });
+  for (let i = 0; i < 14; i++) {
+    const tx = (hash2(i, 3) - 0.5) * 78;
+    const tz = -100 + (hash2(i, 7) - 0.5) * 52;
+    B.add(tx, 5.5, tz, 4, 6 + hash2(i, 11) * 5, 4, i % 2 ? 0x2e7d1e : 0x3fa021);
+  }
+
+  // City blocks on the avenue grid; Times Square towers carry glowing ads
+  let bi = 0;
+  for (let gx = -2; gx <= 2; gx++) {
+    for (let gz = 0; gz <= 6; gz++) {
+      if ((gx === 0 && gz === 2) || (gx === 1 && gz === 1) || (gx === -1 && gz === 5)) {
+        continue; // plazas reserved for the hero buildings
+      }
+      const x = gx * 28;
+      const z = gz * 32 - 55;
+      const r = hash2(gx * 7 + 31, gz * 13 + 5);
+      const w = 13 + r * 6;
+      const midtown = Math.max(0, 1 - Math.abs(gz - 1.5) * 0.28 - Math.abs(gx) * 0.14);
+      const h = 22 + r * 30 + midtown * 58;
+      B.add(x, 3, z, w, h, w, greys[bi % greys.length], { studs: true });
+      for (let y = 12; y < h - 6; y += 12) B.add(x, 3 + y, z, w + 0.7, 1.1, w + 0.7, win);
+
+      if (Math.abs(gx) <= 1 && gz <= 2) {
+        const ads = 2 + Math.floor(r * 3);
+        for (let a = 0; a < ads; a++) {
+          const gy = 8 + hash2(bi, a * 5) * h * 0.55;
+          const side = hash2(a, bi + 2) > 0.5 ? 1 : -1;
+          const gw = 6 + hash2(a * 7, bi) * 6;
+          const gh = 5 + hash2(a, bi * 2) * 7;
+          const color = glowColors[(bi + a) % glowColors.length];
+          if (hash2(a * 9, bi) > 0.5) {
+            B.add(x + side * (w / 2 + 0.55), 3 + gy, z + (hash2(a * 3, bi) - 0.5) * w * 0.4, 1, gh, gw, color, { glow: true });
+          } else {
+            B.add(x + (hash2(a * 3, bi) - 0.5) * w * 0.4, 3 + gy, z + side * (w / 2 + 0.55), gw, gh, 1, color, { glow: true });
+          }
+        }
+      }
+      bi++;
     }
   }
 
   // Empire State Building
-  B.add(0, 0, 0, 20, 34, 20, 0xaab1b9, { studs: true });
-  B.add(0, 34, 0, 14, 22, 14, 0xaab1b9);
-  B.add(0, 56, 0, 9, 12, 9, 0xaab1b9);
-  B.add(0, 68, 0, 4, 6, 4, 0xc0c6cc);
-  B.add(0, 74, 0, 1.5, 10, 1.5, 0xd9dde1);
-  for (let y = 6; y < 30; y += 8) B.add(0, y, 0, 20.7, 1.1, 20.7, 0xf7d354);
+  B.add(0, 3, 9, 24, 42, 24, 0xaab1b9, { studs: true });
+  B.add(0, 45, 9, 17, 26, 17, 0xaab1b9);
+  B.add(0, 71, 9, 11, 15, 11, 0xaab1b9);
+  B.add(0, 86, 9, 5, 7, 5, 0xc0c6cc);
+  B.add(0, 93, 9, 1.8, 12, 1.8, 0xd9dde1);
+  for (let y = 10; y < 38; y += 9) B.add(0, 3 + y, 9, 24.7, 1.1, 24.7, win);
 
   // Chrysler Building
-  B.add(18, 0, 12, 13, 48, 13, 0xbfc9d2, { studs: true });
-  for (let i = 0; i < 6; i++) {
-    B.add(18, 48 + i * 2.6, 12, 12 - i * 1.9, 2.6, 12 - i * 1.9, 0xd3dde6);
+  B.add(28, 3, -23, 15, 58, 15, 0xbfc9d2, { studs: true });
+  for (let i = 0; i < 7; i++) {
+    B.add(28, 61 + i * 2.8, -23, 14 - i * 1.9, 2.8, 14 - i * 1.9, 0xd3dde6);
   }
-  B.add(18, 64, 12, 1.2, 8, 1.2, 0xe3eaf0);
+  B.add(28, 81, -23, 1.4, 10, 1.4, 0xe3eaf0);
 
   // One World Trade Center
-  B.add(-22, 0, -18, 16, 22, 16, 0xc7d3dd, { studs: true });
-  B.add(-22, 22, -18, 13, 26, 13, 0xbcccd9);
-  B.add(-22, 48, -18, 10, 20, 10, 0xc7d3dd);
-  B.add(-22, 68, -18, 1.5, 14, 1.5, 0xdde6ec);
-  for (let y = 6; y < 44; y += 9) B.add(-22, y, -18, 16.7, 1.1, 16.7, 0xf7d354);
+  B.add(-28, 3, 105, 19, 26, 19, 0xc7d3dd, { studs: true });
+  B.add(-28, 29, 105, 15, 32, 15, 0xbcccd9);
+  B.add(-28, 61, 105, 12, 24, 12, 0xc7d3dd);
+  B.add(-28, 85, 105, 1.8, 18, 1.8, 0xdde6ec);
+  for (let y = 8; y < 52; y += 10) B.add(-28, 3 + y, 105, 19.7, 1.1, 19.7, win);
+
+  // Lady Liberty off the southern tip
+  B.add(-14, 0, 172, 10, 5, 10, 0xd9c49a, { studs: true });
+  B.add(-14, 5, 172, 4, 4, 4, 0xb8c4a8);
+  B.add(-14, 9, 172, 3, 11, 3, 0x7fae8f);
+  B.add(-12.2, 16, 172, 1.2, 7, 1.2, 0x7fae8f);
+  B.add(-12.2, 23.5, 172, 1.6, 2, 1.6, 0xffd428, { glow: true });
+  B.add(-14, 20, 172, 2.2, 2.4, 2.2, 0x8fbc9f);
 }
 
 function taj(B: Bricks): void {
@@ -382,14 +441,14 @@ function greatWall(B: Bricks, terrain: Terrain, anchorDir: THREE.Vector3, anchor
 
   const grey = 0x9aa0a6;
   const dark = 0x82888e;
-  const n = 44;
+  const n = 60;
   const pts: { x: number; z: number; y: number }[] = [];
   const probe = new THREE.Vector3();
 
   for (let i = 0; i < n; i++) {
     const u = i / (n - 1);
-    const x = (u - 0.5) * 560;
-    const z = Math.sin(u * 7.5) * 46 + Math.sin(u * 3.1) * 30;
+    const x = (u - 0.5) * 900;
+    const z = Math.sin(u * 7.5) * 70 + Math.sin(u * 3.1) * 45;
     probe
       .copy(anchorDir)
       .multiplyScalar(PLANET_R)
@@ -463,6 +522,7 @@ export class LandmarkManager {
       }
 
       const group = B.build();
+      if (def.id === 'nyc') group.scale.setScalar(1.6);
       group.position.copy(dir).multiplyScalar(PLANET_R + anchorH - 0.5);
       tangentBasis(dir, east, north);
       basisQuat(east, dir, north, q);

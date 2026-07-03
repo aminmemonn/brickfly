@@ -35,7 +35,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: Props) {
       onClick={onClose}
     >
       <div className="glass-strong w-[min(440px,92vw)] rounded-3xl p-7" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-black tracking-tight">Settings</h2>
+        <h2 className="font-display text-2xl font-extrabold tracking-tight">Settings</h2>
 
         <div className="mt-6">
           <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Graphics quality</div>

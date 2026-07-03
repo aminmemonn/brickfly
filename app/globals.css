@@ -134,3 +134,36 @@ canvas {
 .animate-pulse-soft {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }
+
+.kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.title-glow {
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 0 60px rgba(247, 211, 84, 0.35),
+    0 16px 60px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-soft {
+  animation: float-soft 4s ease-in-out infinite;
+}

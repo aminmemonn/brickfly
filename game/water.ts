@@ -1,41 +1,116 @@
 import * as THREE from 'three';
 import { PLANET_R } from './constants';
+import { Terrain } from './terrain';
 
-/** Translucent global ocean with a gentle vertex-wave animation. */
+const VERT = /* glsl */ `
+attribute float depth;
+uniform float uTime;
+varying float vDepth;
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+
+void main() {
+  vDepth = depth;
+  vec3 p = position;
+  float w1 = sin(uTime * 1.4 + position.x * 0.015 + position.z * 0.011);
+  float w2 = cos(uTime * 1.1 + position.y * 0.017 + position.x * 0.009);
+  p += normal * (w1 + w2) * 1.2;
+  vec4 wp = modelMatrix * vec4(p, 1.0);
+  vWorldPos = wp.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+const FRAG = /* glsl */ `
+uniform float uTime;
+uniform vec3 uSun;
+uniform float uDay;
+varying float vDepth;
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+
+void main() {
+  vec3 shallow = vec3(0.22, 0.76, 0.70);
+  vec3 mid = vec3(0.10, 0.47, 0.80);
+  vec3 deep = vec3(0.03, 0.22, 0.52);
+
+  float d = clamp(vDepth, 0.0, 1.0);
+  vec3 col = d < 0.4 ? mix(shallow, mid, d / 0.4) : mix(mid, deep, (d - 0.4) / 0.6);
+
+  // Drifting wave crests, denser in the shallows
+  float band = sin(vWorldPos.x * 0.05 + uTime * 1.7)
+    * sin(vWorldPos.z * 0.047 - uTime * 1.25)
+    * sin(vWorldPos.y * 0.043 + uTime * 1.05);
+  float crest = smoothstep(0.55, 0.95, band);
+  col += vec3(1.0) * crest * 0.14 * (1.0 - d * 0.65);
+
+  // Coastline foam
+  float foam = smoothstep(0.09, 0.015, d);
+  float foamBand = sin(vWorldPos.x * 0.22 + uTime * 2.2) * sin(vWorldPos.z * 0.2 - uTime * 1.8);
+  col += vec3(1.0) * foam * (0.22 + 0.2 * smoothstep(0.2, 0.9, foamBand));
+
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+
+  // Fresnel toward a pale sky tint
+  float fres = pow(1.0 - max(dot(V, N), 0.0), 3.0);
+  col = mix(col, vec3(0.62, 0.82, 1.0), fres * 0.4);
+
+  // Sun glints
+  vec3 R = reflect(-uSun, N);
+  float spec = pow(max(dot(R, V), 0.0), 90.0);
+  col += vec3(1.0, 0.93, 0.78) * spec * 0.85 * uDay;
+
+  col *= 0.16 + 0.84 * uDay;
+
+  float alpha = mix(0.5, 0.93, pow(d, 0.5));
+  gl_FragColor = vec4(col, alpha);
+}
+`;
+
+/**
+ * Stylized ocean: depth-tinted colors sampled from the sea floor, animated
+ * swell, drifting crests, coastal foam, fresnel and sun glints.
+ */
 export class Water {
   readonly mesh: THREE.Mesh;
-  private shader: { uniforms: { uTime: { value: number } } } | null = null;
+  private uniforms: {
+    uTime: { value: number };
+    uSun: { value: THREE.Vector3 };
+    uDay: { value: number };
+  };
 
-  constructor() {
-    const geo = new THREE.SphereGeometry(PLANET_R + 0.5, 128, 72);
-    const mat = new THREE.MeshPhongMaterial({
-      color: 0x2b7fe0,
-      transparent: true,
-      opacity: 0.8,
-      shininess: 110,
-      specular: 0x9fccff
-    });
+  constructor(terrain: Terrain) {
+    const geo = new THREE.SphereGeometry(PLANET_R + 1, 256, 144);
+    const pos = geo.attributes.position;
+    const depths = new Float32Array(pos.count);
+    const dir = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      dir.fromBufferAttribute(pos, i).normalize();
+      depths[i] = Math.min(1, Math.max(0.015, -terrain.rawHeight(dir) / 110));
+    }
+    geo.setAttribute('depth', new THREE.BufferAttribute(depths, 1));
 
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;')
-        .replace(
-          '#include <begin_vertex>',
-          [
-            '#include <begin_vertex>',
-            'float wave = sin(uTime * 1.6 + position.x * 0.021) * 0.5',
-            '  + cos(uTime * 1.1 + position.z * 0.019 + position.y * 0.016) * 0.5;',
-            'transformed += normal * wave * 0.9;'
-          ].join('\n')
-        );
-      this.shader = shader as unknown as { uniforms: { uTime: { value: number } } };
+    this.uniforms = {
+      uTime: { value: 0 },
+      uSun: { value: new THREE.Vector3(1, 0, 0) },
+      uDay: { value: 1 }
     };
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.uniforms,
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      transparent: true
+    });
 
     this.mesh = new THREE.Mesh(geo, mat);
   }
 
-  update(t: number): void {
-    if (this.shader) this.shader.uniforms.uTime.value = t;
+  update(t: number, sunDir: THREE.Vector3, dayMix: number): void {
+    this.uniforms.uTime.value = t;
+    this.uniforms.uSun.value.copy(sunDir);
+    this.uniforms.uDay.value = dayMix;
   }
 }

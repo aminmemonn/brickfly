@@ -17,15 +17,18 @@ export default function GameApp() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [discovered, setDiscovered] = useState<string[]>([]);
+  const [dist, setDist] = useState(0);
 
   useEffect(() => {
     setSettings(loadSettings());
     if (canvasRef.current) createGame(canvasRef.current);
     const offReady = bus.on('ready', () => setPhase((p) => (p === 'boot' ? 'menu' : p)));
     const offCollection = bus.on('collection', (ids) => setDiscovered(ids as string[]));
+    const offHud = bus.on('hud', (d) => setDist(Math.round((d as { dist: number }).dist / 100) / 10));
     return () => {
       offReady();
       offCollection();
+      offHud();
     };
   }, []);
 
@@ -95,7 +98,8 @@ export default function GameApp() {
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-sm animate-fade-in">
           <div className="glass-strong w-80 rounded-3xl p-8 text-center">
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/50">Paused</div>
-            <h2 className="mb-6 text-3xl font-black tracking-tight">BRICKFLY</h2>
+            <h2 className="font-display mb-2 text-3xl font-extrabold tracking-tight">BRICKFLY</h2>
+            <p className="mb-6 text-xs text-white/50">{dist.toFixed(1)} km flown this session</p>
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => {

@@ -5,6 +5,7 @@ import { bus } from '@/game/bus';
 import { getGame } from '@/game/game';
 import { CAMERA_NAMES, CameraMode } from '@/game/camera';
 import { LandmarkDef } from '@/game/landmark-data';
+import { RegionInfo } from '@/game/regions';
 import Minimap from './Minimap';
 
 interface HudData {
@@ -12,6 +13,7 @@ interface HudData {
   speed: number;
   heading: number;
   throttle: number;
+  dist: number;
   maxSpeed: number;
 }
 
@@ -33,9 +35,17 @@ function cardinal(heading: number): string {
 }
 
 export default function HUD({ paused }: { paused: boolean }) {
-  const [hud, setHud] = useState<HudData>({ alt: 0, speed: 0, heading: 0, throttle: 0.5, maxSpeed: 340 });
+  const [hud, setHud] = useState<HudData>({
+    alt: 0,
+    speed: 0,
+    heading: 0,
+    throttle: 0.5,
+    dist: 0,
+    maxSpeed: 480
+  });
   const [landmark, setLandmark] = useState<LandmarkEvent | null>(null);
   const [toast, setToast] = useState<DiscoveryEvent | null>(null);
+  const [region, setRegion] = useState<RegionInfo | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>(0);
   const [crashed, setCrashed] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -44,6 +54,7 @@ export default function HUD({ paused }: { paused: boolean }) {
     const offs = [
       bus.on('hud', (d) => setHud(d as HudData)),
       bus.on('landmark', (d) => setLandmark(d as LandmarkEvent | null)),
+      bus.on('region', (d) => setRegion(d as RegionInfo)),
       bus.on('camera', (m) => setCameraMode(m as CameraMode)),
       bus.on('crash', () => setCrashed(true)),
       bus.on('respawn', () => setCrashed(false)),
@@ -73,6 +84,17 @@ export default function HUD({ paused }: { paused: boolean }) {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10 select-none">
+      {/* Location */}
+      {region && (
+        <div key={region.primary} className="animate-toast-in absolute left-4 top-4">
+          <div className="glass rounded-2xl px-4 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-[0.25em] text-white/45">Flying over</div>
+            <div className="font-display text-lg font-bold leading-tight">{region.primary}</div>
+            {region.secondary && <div className="text-[11px] text-white/55">{region.secondary}</div>}
+          </div>
+        </div>
+      )}
+
       {/* Compass */}
       <div className="absolute left-1/2 top-4 -translate-x-1/2">
         <div className="glass relative h-12 w-72 overflow-hidden rounded-2xl">
@@ -85,7 +107,7 @@ export default function HUD({ paused }: { paused: boolean }) {
                 style={{ left: `calc(50% + ${m.offset}px)` }}
               >
                 {label ? (
-                  <span className="text-sm font-bold text-white/90">{label}</span>
+                  <span className="font-display text-sm font-bold text-white/90">{label}</span>
                 ) : (
                   <span className="h-2 w-px bg-white/40" />
                 )}
@@ -104,12 +126,12 @@ export default function HUD({ paused }: { paused: boolean }) {
         <Minimap />
       </div>
 
-      {/* Speed + throttle + altitude */}
+      {/* Speed + throttle + altitude + distance */}
       <div className="absolute bottom-5 left-4 flex items-end gap-3">
         <div className="glass flex items-end gap-3 rounded-2xl px-5 py-4">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Speed</div>
-            <div className="text-3xl font-black tabular-nums leading-none">{hud.speed}</div>
+            <div className="font-display text-3xl font-bold tabular-nums leading-none">{hud.speed}</div>
           </div>
           <div className="mb-0.5 h-14 w-2 overflow-hidden rounded-full bg-white/10">
             <div
@@ -123,7 +145,14 @@ export default function HUD({ paused }: { paused: boolean }) {
         </div>
         <div className="glass rounded-2xl px-5 py-4">
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Altitude</div>
-          <div className="text-3xl font-black tabular-nums leading-none">{hud.alt}</div>
+          <div className="font-display text-3xl font-bold tabular-nums leading-none">{hud.alt}</div>
+        </div>
+        <div className="glass rounded-2xl px-5 py-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Flown</div>
+          <div className="font-display text-3xl font-bold tabular-nums leading-none">
+            {(hud.dist / 1000).toFixed(1)}
+            <span className="ml-1 text-sm font-semibold text-white/50">km</span>
+          </div>
         </div>
       </div>
 
@@ -157,7 +186,7 @@ export default function HUD({ paused }: { paused: boolean }) {
           <div className="glass-strong rounded-3xl p-5">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-xl font-black tracking-tight">{landmark.def.name}</h3>
+                <h3 className="font-display text-xl font-bold tracking-tight">{landmark.def.name}</h3>
                 <p className="text-xs font-medium text-white/55">{landmark.def.location}</p>
               </div>
               {landmark.isNew && (
@@ -177,7 +206,7 @@ export default function HUD({ paused }: { paused: boolean }) {
               ★
             </span>
             <div>
-              <div className="text-sm font-bold">Landmark discovered — {toast.def.name}</div>
+              <div className="font-display text-sm font-bold">Landmark discovered — {toast.def.name}</div>
               <div className="text-[11px] text-white/55">
                 {toast.count} of {toast.total} collected
               </div>
@@ -192,7 +221,7 @@ export default function HUD({ paused }: { paused: boolean }) {
           <div className="animate-crash-flash absolute inset-0 bg-red-500/40" />
           <div className="absolute left-1/2 top-1/3 -translate-x-1/2 text-center">
             <div className="glass-strong rounded-2xl px-6 py-4">
-              <div className="text-lg font-black">Ouch — bricks everywhere!</div>
+              <div className="font-display text-lg font-bold">Ouch — bricks everywhere!</div>
               <div className="animate-pulse-soft mt-1 text-xs text-white/60">Rebuilding your plane…</div>
             </div>
           </div>
@@ -202,17 +231,31 @@ export default function HUD({ paused }: { paused: boolean }) {
       {/* Help */}
       {showHelp && (
         <div className="pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2 animate-fade-in">
-          <div className="glass-strong rounded-2xl px-6 py-4 text-xs leading-6 text-white/75">
+          <div className="glass-strong rounded-2xl px-6 py-4 text-xs leading-7 text-white/75">
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Controls</div>
-            <div className="grid grid-cols-2 gap-x-8">
-              <span>W / S · pitch</span>
-              <span>A / D · roll</span>
-              <span>Q / E · yaw</span>
-              <span>Space / Shift · throttle</span>
-              <span>1–4 · cameras</span>
-              <span>Drag · look around</span>
-              <span>Esc · pause</span>
-              <span>H · toggle help</span>
+            <div className="grid grid-cols-2 gap-x-10">
+              <span>
+                <span className="kbd">W</span> <span className="kbd">S</span> pitch
+              </span>
+              <span>
+                <span className="kbd">A</span> <span className="kbd">D</span> roll
+              </span>
+              <span>
+                <span className="kbd">Q</span> <span className="kbd">E</span> yaw
+              </span>
+              <span>
+                <span className="kbd">Space</span> <span className="kbd">Shift</span> throttle
+              </span>
+              <span>
+                <span className="kbd">1</span>–<span className="kbd">4</span> cameras
+              </span>
+              <span>drag to look around</span>
+              <span>
+                <span className="kbd">Esc</span> pause
+              </span>
+              <span>
+                <span className="kbd">H</span> toggle help
+              </span>
             </div>
           </div>
         </div>

@@ -21,7 +21,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 48.858,
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
-    radius: 320,
+    radius: 420,
     flat: 130,
     plateau: 10
   },
@@ -32,8 +32,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 40.712,
     lon: -74.006,
     fact: 'A skyline of stacked grey bricks with yellow window studs. Rush hour is still faster up here.',
-    radius: 430,
-    flat: 320,
+    radius: 560,
+    flat: 380,
     plateau: 6
   },
   {
@@ -43,7 +43,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 27.175,
     lon: 78.042,
     fact: 'White bricks, teal accents, perfect symmetry — a monument you could take apart and rebuild forever.',
-    radius: 320,
+    radius: 420,
     flat: 170,
     plateau: 9
   },
@@ -54,7 +54,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 40.432,
     lon: 116.57,
     fact: 'It winds over every brick hill in sight. Legend says you can see it from the menu screen.',
-    radius: 450
+    radius: 580
   },
   {
     id: 'sydney',
@@ -63,7 +63,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: -33.857,
     lon: 151.215,
     fact: 'Those white sail shells took the real architects 14 years. These bricks clicked together in seconds.',
-    radius: 320,
+    radius: 440,
     flat: 170,
     plateau: 6
   },
@@ -74,7 +74,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 41.89,
     lon: 12.492,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
-    radius: 320,
+    radius: 420,
     flat: 160,
     plateau: 10
   },
@@ -85,7 +85,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 35.361,
     lon: 138.728,
     fact: 'A perfect cone with a snow-white cap. The bravest pilots buzz the crater rim.',
-    radius: 420,
+    radius: 540,
     flat: 160,
     plateau: 8
   },
@@ -96,7 +96,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 29.979,
     lon: 31.134,
     fact: 'Step pyramids in tan brick, at true proportions. The originals were also built one block at a time.',
-    radius: 380,
+    radius: 500,
     flat: 240,
     plateau: 8
   },
@@ -107,7 +107,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 51.5,
     lon: -0.124,
     fact: 'The clock tower of Westminster in warm tan brick. It is always brick o’clock somewhere.',
-    radius: 320,
+    radius: 420,
     flat: 170,
     plateau: 8
   },
@@ -118,7 +118,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 25.197,
     lon: 55.274,
     fact: 'The tallest stack on the planet — 828 metres of glass, or about 270 bricks straight up.',
-    radius: 380,
+    radius: 480,
     flat: 210,
     plateau: 5
   }
