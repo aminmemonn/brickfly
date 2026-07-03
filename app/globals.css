@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: #06090f;
+  color: #f4f6f8;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.glass-strong {
+  background: rgba(14, 18, 28, 0.62);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.spring {
+  transition: all 0.45s cubic-bezier(0.22, 1.4, 0.36, 1);
+}
+
+@keyframes brick-pop {
+  0% {
+    transform: translateY(-30px) scale(0.55);
+    opacity: 0;
+  }
+  62% {
+    transform: translateY(3px) scale(1.07);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes toast-in {
+  0% {
+    transform: translateY(-18px) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes card-in {
+  0% {
+    transform: translateX(-24px) scale(0.94);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(4px) scale(1.01);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes crash-flash {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-brick-pop {
+  animation: brick-pop 0.55s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+.animate-toast-in {
+  animation: toast-in 0.45s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+.animate-card-in {
+  animation: card-in 0.5s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out both;
+}
+
+.animate-crash-flash {
+  animation: crash-flash 0.9s ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
