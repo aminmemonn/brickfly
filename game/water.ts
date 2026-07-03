@@ -26,6 +26,9 @@ const FRAG = /* glsl */ `
 uniform float uTime;
 uniform vec3 uSun;
 uniform float uDay;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
 varying float vDepth;
 varying vec3 vNormal;
 varying vec3 vWorldPos;
@@ -64,6 +67,9 @@ void main() {
 
   col *= 0.16 + 0.84 * uDay;
 
+  float fogF = smoothstep(uFogNear, uFogFar, length(cameraPosition - vWorldPos));
+  col = mix(col, uFogColor, fogF);
+
   float alpha = mix(0.5, 0.93, pow(d, 0.5));
   gl_FragColor = vec4(col, alpha);
 }
@@ -79,6 +85,9 @@ export class Water {
     uTime: { value: number };
     uSun: { value: THREE.Vector3 };
     uDay: { value: number };
+    uFogColor: { value: THREE.Color };
+    uFogNear: { value: number };
+    uFogFar: { value: number };
   };
 
   constructor(terrain: Terrain) {
@@ -95,7 +104,10 @@ export class Water {
     this.uniforms = {
       uTime: { value: 0 },
       uSun: { value: new THREE.Vector3(1, 0, 0) },
-      uDay: { value: 1 }
+      uDay: { value: 1 },
+      uFogColor: { value: new THREE.Color(0xbfe3ff) },
+      uFogNear: { value: 1400 },
+      uFogFar: { value: 9000 }
     };
 
     const mat = new THREE.ShaderMaterial({
@@ -108,9 +120,19 @@ export class Water {
     this.mesh = new THREE.Mesh(geo, mat);
   }
 
-  update(t: number, sunDir: THREE.Vector3, dayMix: number): void {
+  update(
+    t: number,
+    sunDir: THREE.Vector3,
+    dayMix: number,
+    fogColor: THREE.Color,
+    fogNear: number,
+    fogFar: number
+  ): void {
     this.uniforms.uTime.value = t;
     this.uniforms.uSun.value.copy(sunDir);
     this.uniforms.uDay.value = dayMix;
+    this.uniforms.uFogColor.value.copy(fogColor);
+    this.uniforms.uFogNear.value = fogNear;
+    this.uniforms.uFogFar.value = fogFar;
   }
 }

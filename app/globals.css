@@ -167,3 +167,35 @@ canvas {
 .animate-float-soft {
   animation: float-soft 4s ease-in-out infinite;
 }
+
+input[type='range'].throttle-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, rgba(76, 178, 39, 0.7), rgba(247, 211, 84, 0.7));
+  outline: none;
+  cursor: pointer;
+}
+
+input[type='range'].throttle-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f7d354;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+input[type='range'].throttle-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f7d354;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}

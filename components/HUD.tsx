@@ -49,6 +49,7 @@ export default function HUD({ paused }: { paused: boolean }) {
   const [cameraMode, setCameraMode] = useState<CameraMode>(0);
   const [crashed, setCrashed] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [station, setStation] = useState('Sunny Bricks');
 
   useEffect(() => {
     const offs = [
@@ -56,6 +57,7 @@ export default function HUD({ paused }: { paused: boolean }) {
       bus.on('landmark', (d) => setLandmark(d as LandmarkEvent | null)),
       bus.on('region', (d) => setRegion(d as RegionInfo)),
       bus.on('camera', (m) => setCameraMode(m as CameraMode)),
+      bus.on('radio', (s) => setStation(s as string)),
       bus.on('crash', () => setCrashed(true)),
       bus.on('respawn', () => setCrashed(false)),
       bus.on('discovered', (d) => {
@@ -126,34 +128,50 @@ export default function HUD({ paused }: { paused: boolean }) {
         <Minimap />
       </div>
 
-      {/* Speed + throttle + altitude + distance */}
-      <div className="absolute bottom-5 left-4 flex items-end gap-3">
-        <div className="glass flex items-end gap-3 rounded-2xl px-5 py-4">
-          <div>
+      {/* Speed + altitude + distance + throttle slider */}
+      <div className="absolute bottom-5 left-4 flex flex-col gap-2">
+        <div className="flex items-end gap-3">
+          <div className="glass rounded-2xl px-5 py-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Speed</div>
             <div className="font-display text-3xl font-bold tabular-nums leading-none">{hud.speed}</div>
           </div>
-          <div className="mb-0.5 h-14 w-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="w-full rounded-full bg-gradient-to-t from-[#4cb227] to-[#f7d354] transition-[height] duration-200"
-              style={{
-                height: `${Math.round(hud.throttle * 100)}%`,
-                marginTop: `${Math.round((1 - hud.throttle) * 100)}%`
-              }}
-            />
+          <div className="glass rounded-2xl px-5 py-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Altitude</div>
+            <div className="font-display text-3xl font-bold tabular-nums leading-none">{hud.alt}</div>
+          </div>
+          <div className="glass rounded-2xl px-5 py-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Flown</div>
+            <div className="font-display text-3xl font-bold tabular-nums leading-none">
+              {(hud.dist / 1000).toFixed(1)}
+              <span className="ml-1 text-sm font-semibold text-white/50">km</span>
+            </div>
           </div>
         </div>
-        <div className="glass rounded-2xl px-5 py-4">
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Altitude</div>
-          <div className="font-display text-3xl font-bold tabular-nums leading-none">{hud.alt}</div>
-        </div>
-        <div className="glass rounded-2xl px-5 py-4">
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Flown</div>
-          <div className="font-display text-3xl font-bold tabular-nums leading-none">
-            {(hud.dist / 1000).toFixed(1)}
-            <span className="ml-1 text-sm font-semibold text-white/50">km</span>
+        <div className="glass pointer-events-auto w-[19.5rem] rounded-2xl px-4 py-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Throttle</span>
+            <span className="font-display text-xs font-bold text-white/80">{Math.round(hud.throttle * 100)}%</span>
           </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(hud.throttle * 100)}
+            onChange={(e) => getGame()?.setThrottle(Number(e.target.value) / 100)}
+            className="throttle-range w-full"
+            aria-label="Throttle"
+          />
         </div>
+      </div>
+
+      {/* Radio */}
+      <div className="pointer-events-auto absolute bottom-5 right-4">
+        <button
+          onClick={() => getGame()?.cycleRadio()}
+          className="spring glass flex items-center gap-2 rounded-2xl px-4 py-3 text-xs font-bold"
+        >
+          <span className="text-[#f7d354]">♪</span> {station}
+        </button>
       </div>
 
       {/* Camera dock */}

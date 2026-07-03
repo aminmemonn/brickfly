@@ -3,6 +3,8 @@ import { MAX_SPEED } from './constants';
 
 const PENTATONIC = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 659.25, 783.99];
 
+export const RADIO_STATIONS = ['Radio Off', 'Sunny Bricks', 'Night Glide', 'Prop & Bass'];
+
 /**
  * Runtime-synthesized audio: engine hum tied to throttle, wind tied to speed,
  * a discovery chime, and a light generative music loop. Everything is
@@ -25,6 +27,7 @@ export class AudioManager {
 
   private musicTimer: number | null = null;
   private beat = 0;
+  private station = 1;
 
   private sfxEnabled = true;
   private musicEnabled = true;
@@ -64,7 +67,7 @@ export class AudioManager {
   private applyToggles(): void {
     if (!this.ctx) return;
     if (this.sfxGain) this.sfxGain.gain.value = this.sfxEnabled ? 1 : 0;
-    if (this.musicGain) this.musicGain.gain.value = this.musicEnabled ? 0.3 : 0;
+    if (this.musicGain) this.musicGain.gain.value = this.musicEnabled && this.station > 0 ? 0.3 : 0;
   }
 
   private buildEngine(ctx: AudioContext): void {
@@ -117,14 +120,14 @@ export class AudioManager {
   setFlight(throttle: number, speed: number, paused: boolean): void {
     if (!this.ctx || !this.engineOsc || !this.engineLevel || !this.windLevel) return;
     const t = this.ctx.currentTime;
-    const target = paused ? 0 : 0.06 + throttle * 0.075;
+    const target = paused ? 0 : 0.03 + throttle * 0.042;
     this.engineLevel.gain.setTargetAtTime(target, t, 0.12);
     this.engineOsc.frequency.setTargetAtTime(58 + throttle * 74, t, 0.15);
     this.engineSub?.frequency.setTargetAtTime(29 + throttle * 37, t, 0.15);
     this.engineFilter?.frequency.setTargetAtTime(380 + speed * 2.4, t, 0.2);
 
     const windAmount = clamp(speed / MAX_SPEED, 0, 1);
-    this.windLevel.gain.setTargetAtTime(paused ? 0 : windAmount * windAmount * 0.16, t, 0.25);
+    this.windLevel.gain.setTargetAtTime(paused ? 0 : windAmount * windAmount * 0.11, t, 0.25);
     this.windFilter?.frequency.setTargetAtTime(500 + windAmount * 1400, t, 0.3);
   }
 
@@ -193,22 +196,44 @@ export class AudioManager {
     this.chimeNote(90, t, 0.35);
   }
 
+  /** Cycle to the next radio station; returns the new station index. */
+  nextStation(): number {
+    this.station = (this.station + 1) % RADIO_STATIONS.length;
+    this.applyToggles();
+    return this.station;
+  }
+
+  get stationIndex(): number {
+    return this.station;
+  }
+
   private startMusic(): void {
     if (!this.ctx || this.musicTimer !== null) return;
+    const ARP = [261.63, 329.63, 392.0, 440.0, 523.25, 440.0, 392.0, 329.63];
     const step = () => {
-      if (!this.ctx) return;
+      if (!this.ctx || this.station === 0) return;
       const t = this.ctx.currentTime + 0.08;
       this.beat++;
-      if (this.beat % 8 === 1) {
-        this.pluck(PENTATONIC[0] / 2, t, 1.6, 0.11, 'sine');
-      }
-      if (Math.random() < 0.55) {
-        const note = PENTATONIC[Math.floor(Math.random() * PENTATONIC.length)];
-        this.pluck(note, t, 0.9, 0.07);
-        if (Math.random() < 0.25) this.pluck(note * 1.5, t + 0.14, 0.7, 0.045);
+      if (this.station === 1) {
+        if (this.beat % 2 !== 0) return;
+        if (this.beat % 16 === 2) this.pluck(PENTATONIC[0] / 2, t, 1.6, 0.11, 'sine');
+        if (Math.random() < 0.55) {
+          const note = PENTATONIC[Math.floor(Math.random() * PENTATONIC.length)];
+          this.pluck(note, t, 0.9, 0.07);
+          if (Math.random() < 0.25) this.pluck(note * 1.5, t + 0.14, 0.7, 0.045);
+        }
+      } else if (this.station === 2) {
+        if (this.beat % 13 !== 0) return;
+        const root = PENTATONIC[Math.floor(Math.random() * 4)] / 2;
+        this.pluck(root, t, 3.4, 0.055, 'sine');
+        this.pluck(root * 1.5, t + 0.3, 3.0, 0.04, 'sine');
+        if (Math.random() < 0.5) this.pluck(root * 2.25, t + 0.7, 2.4, 0.028, 'sine');
+      } else {
+        this.pluck(ARP[this.beat % ARP.length], t, 0.22, 0.05);
+        if (this.beat % 8 === 0) this.pluck(PENTATONIC[0] / 4, t, 0.9, 0.09, 'sine');
       }
     };
-    this.musicTimer = window.setInterval(step, 280);
+    this.musicTimer = window.setInterval(step, 140);
   }
 
   dispose(): void {

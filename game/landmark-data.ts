@@ -22,7 +22,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
     radius: 420,
-    flat: 130,
+    flat: 240,
     plateau: 10
   },
   {
@@ -44,7 +44,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: 78.042,
     fact: 'White bricks, teal accents, perfect symmetry — a monument you could take apart and rebuild forever.',
     radius: 420,
-    flat: 170,
+    flat: 240,
     plateau: 9
   },
   {
@@ -64,7 +64,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: 151.215,
     fact: 'Those white sail shells took the real architects 14 years. These bricks clicked together in seconds.',
     radius: 440,
-    flat: 170,
+    flat: 240,
     plateau: 6
   },
   {
@@ -75,7 +75,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: 12.492,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
     radius: 420,
-    flat: 160,
+    flat: 240,
     plateau: 10
   },
   {
@@ -108,7 +108,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: -0.124,
     fact: 'The clock tower of Westminster in warm tan brick. It is always brick o’clock somewhere.',
     radius: 420,
-    flat: 170,
+    flat: 240,
     plateau: 8
   },
   {
@@ -119,7 +119,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: 55.274,
     fact: 'The tallest stack on the planet — 828 metres of glass, or about 270 bricks straight up.',
     radius: 480,
-    flat: 210,
+    flat: 240,
     plateau: 5
   }
 ];

@@ -13,8 +13,9 @@ import { CameraRig, CameraMode } from './camera';
 import { Contrail } from './contrail';
 import { Explosion } from './explosion';
 import { LandmarkManager } from './landmarks';
-import { AudioManager } from './audio';
+import { AudioManager, RADIO_STATIONS } from './audio';
 import { Ambient } from './ambient';
+import { CityLife } from './life';
 import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
@@ -27,6 +28,10 @@ const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 const vTmp = new THREE.Vector3();
 const vWingL = new THREE.Vector3();
 const vWingR = new THREE.Vector3();
+
+const FOG_DAY = new THREE.Color(0xbfe3ff);
+const FOG_NIGHT = new THREE.Color(0x0e1830);
+const FOG_GOLDEN = new THREE.Color(0xffb27a);
 
 export class Game {
   mode: GameMode = 'boot';
@@ -48,6 +53,7 @@ export class Game {
   private explosion!: Explosion;
   private landmarks!: LandmarkManager;
   private ambient!: Ambient;
+  private life!: CityLife;
   private audio = new AudioManager();
   private input = new Input();
 
@@ -61,6 +67,9 @@ export class Game {
   private posTimer = 0;
   private regionTimer = 0;
   private lastRegion = '';
+  private fogColor = new THREE.Color(0xbfe3ff);
+  private fogNear = 1400;
+  private fogFar = 9000;
   private menuAngle = 0;
   private raf = 0;
   private disposed = false;
@@ -84,6 +93,7 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.5, 26000);
     this.camera.position.set(0, 0, PLANET_R * 2.7);
+    this.scene.fog = new THREE.Fog(0xbfe3ff, this.fogNear, this.fogFar);
 
     this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x4a5568, 0.6);
     this.scene.add(this.hemi);
@@ -137,6 +147,8 @@ export class Game {
     this.landmarks = new LandmarkManager(this.terrain);
     this.landmarks.build();
     this.scene.add(this.landmarks.group);
+    this.life = new CityLife(this.landmarks.cities);
+    this.scene.add(this.life.group);
 
     progress(82, 'Stacking terrain');
     await nextFrame();
@@ -177,7 +189,7 @@ export class Game {
     const at = new URLSearchParams(window.location.search).get('at');
     if (at) {
       const def = LANDMARKS.find((lm) => lm.id === at);
-      if (def) this.flight.reset(def.lat, def.lon - 1.5, 90, 150);
+      if (def) this.flight.reset(def.lat, def.lon - 4, 90, 120);
     }
     this.mode = 'playing';
     this.rig.beginTransition();
@@ -204,6 +216,17 @@ export class Game {
   setCameraMode(mode: CameraMode): void {
     this.rig.setMode(mode);
     bus.emit('camera', mode);
+  }
+
+  setThrottle(v: number): void {
+    if (this.flight) this.flight.throttle = Math.min(1, Math.max(0, v));
+  }
+
+  cycleRadio(): void {
+    this.audio.init();
+    const idx = this.audio.nextStation();
+    bus.emit('radio', RADIO_STATIONS[idx]);
+    this.audio.click();
   }
 
   applySettings(s: Settings): void {
@@ -318,9 +341,10 @@ export class Game {
     // Environment
     const playerUp = vTmp.copy(this.mode === 'menu' ? this.camera.position : this.flight.pos).normalize();
     this.sky.update(dt, this.camera.position, playerUp);
-    this.water.update(this.elapsed, this.sky.sunDir, this.sky.dayMix);
+    this.water.update(this.elapsed, this.sky.sunDir, this.sky.dayMix, this.fogColor, this.fogNear, this.fogFar);
     updateClouds(this.clouds, dt);
     this.ambient.update(this.elapsed);
+    this.life.update(dt, this.elapsed);
     this.updateLighting();
 
     // Audio
@@ -367,6 +391,17 @@ export class Game {
     this.sun.intensity = 0.25 + day * 2.1;
     this.sun.color.setHex(0xffffff).lerp(new THREE.Color(0xffb070), golden);
     this.hemi.intensity = 0.32 + day * 0.6;
+
+    // Distance haze: match the horizon tint, disabled for the menu's
+    // from-space view of the whole planet.
+    const menuView = this.mode === 'menu';
+    this.fogNear = menuView ? 30000 : 1400;
+    this.fogFar = menuView ? 40000 : 9000;
+    this.fogColor.copy(FOG_NIGHT).lerp(FOG_DAY, day).lerp(FOG_GOLDEN, golden * 0.5);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.fogColor);
+    fog.near = this.fogNear;
+    fog.far = this.fogFar;
 
     const anchor = this.mode === 'menu' ? this.camera.position : this.flight.pos;
     if (this.sun.castShadow) {

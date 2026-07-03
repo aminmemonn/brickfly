@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { PLANET_R } from './constants';
+import { PLANET_R, BRICK_H } from './constants';
+import { CityFrame } from './life';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
 import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, hash2, DEG2RAD } from './util';
@@ -132,6 +133,206 @@ class Bricks {
     }
 
     return group;
+  }
+}
+
+/* ------------------------------------------------------------------ cities */
+
+interface CityStyle {
+  walls: number[];
+  roofs: number[];
+  band: number;
+  floors: [number, number];
+  plaza: number;
+  road: number;
+  rings: number[];
+  perRing: number[];
+  trees: number;
+  glow?: boolean;
+}
+
+const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; plaza: number; groundY: number } }> = {
+  eiffel: {
+    style: {
+      walls: [0xe8dcc0, 0xddd0b0, 0xf0e6d2],
+      roofs: [0x5a6b7a, 0x4a5a68],
+      band: 0xfdf6e3,
+      floors: [8, 18],
+      plaza: 46,
+      road: 60,
+      rings: [80, 112],
+      perRing: [10, 13],
+      trees: 12
+    },
+    frame: { ring: 60, plaza: 42, groundY: 1.4 }
+  },
+  bigben: {
+    style: {
+      walls: [0xc46a4a, 0xb05b3e, 0xcf8a5b],
+      roofs: [0x555b63, 0x474c54],
+      band: 0xf3e9d2,
+      floors: [7, 14],
+      plaza: 54,
+      road: 68,
+      rings: [88, 118],
+      perRing: [10, 13],
+      trees: 10
+    },
+    frame: { ring: 68, plaza: 50, groundY: 1.4 }
+  },
+  colosseum: {
+    style: {
+      walls: [0xd98859, 0xc97748, 0xe0a067],
+      roofs: [0xb5533c, 0xa64a35],
+      band: 0xf0e0c8,
+      floors: [6, 11],
+      plaza: 58,
+      road: 74,
+      rings: [94, 124],
+      perRing: [11, 14],
+      trees: 8
+    },
+    frame: { ring: 74, plaza: 54, groundY: 1.4 }
+  },
+  taj: {
+    style: {
+      walls: [0xf0e0c0, 0xe8d5b0, 0xdac59a],
+      roofs: [0xc96a3b, 0xb85d33],
+      band: 0xfff4dd,
+      floors: [6, 12],
+      plaza: 50,
+      road: 64,
+      rings: [84, 114],
+      perRing: [10, 12],
+      trees: 12
+    },
+    frame: { ring: 64, plaza: 46, groundY: 1.4 }
+  },
+  sydney: {
+    style: {
+      walls: [0xdfe5ea, 0xc9d4dc, 0x9fb6c6],
+      roofs: [0x6b7684, 0x59636f],
+      band: 0x8fd8e8,
+      floors: [10, 22],
+      plaza: 54,
+      road: 68,
+      rings: [88, 116],
+      perRing: [10, 12],
+      trees: 8
+    },
+    frame: { ring: 68, plaza: 50, groundY: 1.4 }
+  },
+  burj: {
+    style: {
+      walls: [0x9fb6c6, 0xb7cbd8, 0x8fb0c4],
+      roofs: [0xdde6ec],
+      band: 0x28d8ff,
+      floors: [14, 30],
+      plaza: 46,
+      road: 62,
+      rings: [84, 116],
+      perRing: [9, 11],
+      trees: 6,
+      glow: true
+    },
+    frame: { ring: 62, plaza: 42, groundY: 1.4 }
+  },
+  giza: {
+    style: {
+      walls: [0xd9c49a, 0xcbb083],
+      roofs: [0xb89b6a],
+      band: 0xefe0c0,
+      floors: [4, 7],
+      plaza: 0,
+      road: 0,
+      rings: [128],
+      perRing: [9],
+      trees: 5
+    }
+  },
+  fuji: {
+    style: {
+      walls: [0x6b4a35, 0x7a5741, 0xf4efe4],
+      roofs: [0x474c54, 0x3a3f46],
+      band: 0xf4efe4,
+      floors: [3, 5],
+      plaza: 0,
+      road: 0,
+      rings: [118],
+      perRing: [8],
+      trees: 10
+    }
+  },
+  nyc: { frame: { ring: 72, plaza: 0, groundY: 5 } }
+};
+
+/** Generic brick city district: plaza, roads, housing rings, trees, lamps. */
+function city(B: Bricks, s: CityStyle, seed: number): void {
+  if (s.plaza > 0) {
+    B.add(0, 0, 0, s.plaza * 2, 1.2, s.plaza * 2, 0xc9cdd3);
+    B.add(0, 0, 0, s.plaza * 2, 1.2, s.plaza * 2, 0xc9cdd3, { ry: Math.PI / 4 });
+  }
+
+  if (s.road > 0) {
+    const R = s.road;
+    for (let side = 0; side < 4; side++) {
+      const horizontal = side % 2 === 0;
+      const off = side < 2 ? R : -R;
+      if (horizontal) B.add(0, 0, off, R * 2 + 10, 0.9, 10, 0x3e434b);
+      else B.add(off, 0, 0, 10, 0.9, R * 2 + 10, 0x3e434b);
+      for (let d = -R + 8; d <= R - 8; d += 12) {
+        if (horizontal) B.add(d, 0.95, off, 3.2, 0.3, 0.8, 0xf4f4f2);
+        else B.add(off, 0.95, d, 0.8, 0.3, 3.2, 0xf4f4f2);
+      }
+    }
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        B.add(sx * R, 1, sz * R, 0.5, 5, 0.5, 0x33363c);
+        B.add(sx * R, 6, sz * R, 1.1, 1.1, 1.1, 0xffe9a8, { glow: true });
+      }
+    }
+
+    const outer = s.rings[s.rings.length - 1] + 14;
+    for (let a = 0; a < 4; a++) {
+      const horiz = a % 2 === 0;
+      const from = s.plaza + 2;
+      const mid = (from + outer) / 2;
+      const len = outer - from;
+      const sign = a < 2 ? 1 : -1;
+      if (horiz) B.add(sign * mid, 0, 0, len, 0.9, 8, 0x3e434b);
+      else B.add(0, 0, sign * mid, 8, 0.9, len, 0x3e434b);
+    }
+  }
+
+  let n = 0;
+  s.rings.forEach((r, ri) => {
+    const count = s.perRing[ri];
+    for (let i = 0; i < count; i++) {
+      const a = ((i + 0.5) / count) * Math.PI * 2;
+      // keep the radial avenues clear
+      if (Math.min(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) < 0.12) continue;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      const h1 = hash2(seed + n * 13, ri * 7 + 1);
+      const h2 = hash2(seed + n * 29, ri * 11 + 3);
+      const w = 11 + h1 * 6;
+      const height = (s.floors[0] + h2 * (s.floors[1] - s.floors[0])) * 2.4;
+      B.add(x, 1, z, w, height, w, s.walls[n % s.walls.length], { ry: -a, studs: true });
+      B.add(x, 1 + height, z, w + 1.6, 2, w + 1.6, s.roofs[n % s.roofs.length], { ry: -a });
+      for (let y = 5; y < height - 3; y += 5.5) {
+        B.add(x, 1 + y, z, w + 0.5, 0.9, w + 0.5, s.band, { ry: -a, glow: s.glow && y > height * 0.3 });
+      }
+      n++;
+    }
+  });
+
+  for (let i = 0; i < s.trees; i++) {
+    const a = hash2(seed + i * 3, 17) * Math.PI * 2;
+    const r = (s.plaza > 0 ? s.plaza : s.rings[0] * 0.55) + 6 + hash2(i, seed) * 8;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    B.add(x, 1, z, 1.1, 3.2, 1.1, 0x8a6743);
+    B.add(x, 4.2, z, 4.5, 4.5, 4.5, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
 }
 
@@ -485,6 +686,7 @@ interface PlacedLandmark {
 
 export class LandmarkManager {
   readonly group = new THREE.Group();
+  readonly cities: CityFrame[] = [];
   private items: PlacedLandmark[] = [];
   private discovered = new Set<string>();
   private nearId: string | null = null;
@@ -521,13 +723,31 @@ export class LandmarkManager {
         case 'burj': burj(B); break;
       }
 
+      const cfg = CITY_CONFIGS[def.id];
+      if (cfg?.style) city(B, cfg.style, Math.abs(def.lat * 7 + def.lon));
+
       const group = B.build();
       if (def.id === 'nyc') group.scale.setScalar(1.6);
-      group.position.copy(dir).multiplyScalar(PLANET_R + anchorH - 0.5);
+      // Snap the base onto the top of the quantized voxel terrain so
+      // monuments sit flush on the bricks instead of sinking into them.
+      const baseR = PLANET_R + Math.ceil(Math.max(anchorH, 1) / BRICK_H) * BRICK_H + 0.2;
+      group.position.copy(dir).multiplyScalar(baseR);
       tangentBasis(dir, east, north);
       basisQuat(east, dir, north, q);
       group.quaternion.copy(q);
       this.group.add(group);
+
+      if (cfg?.frame) {
+        this.cities.push({
+          origin: dir.clone().multiplyScalar(baseR),
+          up: dir.clone(),
+          east: east.clone(),
+          north: north.clone(),
+          ring: cfg.frame.ring,
+          plaza: cfg.frame.plaza,
+          groundY: cfg.frame.groundY
+        });
+      }
 
       this.items.push({ def, dir, worldPos: group.position.clone(), group });
     }
