@@ -46,14 +46,21 @@ export function tangentBasis(up: THREE.Vector3, east: THREE.Vector3, north: THRE
 }
 
 const basisMat = new THREE.Matrix4();
+const basisZ = new THREE.Vector3();
 
 export function basisQuat(
   east: THREE.Vector3,
   up: THREE.Vector3,
-  north: THREE.Vector3,
+  _north: THREE.Vector3,
   out = new THREE.Quaternion()
 ): THREE.Quaternion {
-  basisMat.makeBasis(east, up, north);
+  // tangentBasis returns north = up x east, which makes (east, up, north) a
+  // LEFT-handed basis (determinant -1). Feeding that improper matrix to
+  // setFromRotationMatrix yields a bogus quaternion that tilts everything
+  // oriented with it. Rebuild the third axis as east x up so the matrix is a
+  // proper rotation and local +Y maps exactly onto `up`.
+  basisZ.crossVectors(east, up);
+  basisMat.makeBasis(east, up, basisZ);
   return out.setFromRotationMatrix(basisMat);
 }
 
