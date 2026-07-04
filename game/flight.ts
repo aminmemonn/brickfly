@@ -106,7 +106,9 @@ export class Flight {
 
   reset(latDeg: number, lonDeg: number, headingDeg: number, alt: number): void {
     const up = latLonToDir(latDeg * DEG2RAD, lonDeg * DEG2RAD);
-    this.pos.copy(up).multiplyScalar(PLANET_R + alt);
+    // alt is height above the local ground so spawns clear raised city pads.
+    const ground = Math.max(this.terrain.height(up), 0.5);
+    this.pos.copy(up).multiplyScalar(PLANET_R + ground + alt);
     this.setLevelHeading(headingDeg * DEG2RAD);
     this.speed = 120;
     this.throttle = 0.45;

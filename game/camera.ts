@@ -75,16 +75,20 @@ export class CameraRig {
         qUser.copy(plane.quat);
         qUser.multiply(qTmp.setFromAxisAngle(Y_AXIS, this.userYaw));
         qUser.multiply(qTmp.setFromAxisAngle(X_AXIS, this.userPitch));
-        vOffset.set(0, 4.5, 16).applyQuaternion(qUser);
+        vOffset.set(0, 8.5, 28).applyQuaternion(qUser);
         vLook.copy(plane.pos).add(vOffset);
         if (cam.position.distanceTo(plane.pos) > 700) cam.position.copy(vLook);
         const rate = this.softStart > 0 ? 2.4 : 7.5;
         cam.position.lerp(vLook, damp(rate, dt));
         this.clampToTerrain(cam.position);
-        cam.up.set(0, 1, 0).applyQuaternion(plane.quat);
+        // Lock the camera up to the planet's up so the horizon stays dead
+        // level and buildings read as vertical no matter how the plane banks.
+        cam.up.copy(vUp);
         vLook.copy(plane.pos).addScaledVector(vFwd, 12);
         cam.lookAt(vLook);
-        targetFov = 60 + (speed / MAX_SPEED) * 18;
+        // Keep the lens fairly long so nearby tall buildings don't keystone
+        // (splay outward) when the plane flies close to them.
+        targetFov = 52 + (speed / MAX_SPEED) * 8;
         break;
       }
       case 1: {

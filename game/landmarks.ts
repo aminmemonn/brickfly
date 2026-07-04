@@ -157,7 +157,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       walls: [0xe8dcc0, 0xddd0b0, 0xf0e6d2],
       roofs: [0x5a6b7a, 0x4a5a68],
       band: 0xfdf6e3,
-      floors: [8, 18],
+      floors: [5, 10],
       plaza: 46,
       road: 60,
       rings: [80, 112],
@@ -171,7 +171,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       walls: [0xc46a4a, 0xb05b3e, 0xcf8a5b],
       roofs: [0x555b63, 0x474c54],
       band: 0xf3e9d2,
-      floors: [7, 14],
+      floors: [5, 9],
       plaza: 54,
       road: 68,
       rings: [88, 118],
@@ -185,7 +185,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       walls: [0xd98859, 0xc97748, 0xe0a067],
       roofs: [0xb5533c, 0xa64a35],
       band: 0xf0e0c8,
-      floors: [6, 11],
+      floors: [4, 8],
       plaza: 58,
       road: 74,
       rings: [94, 124],
@@ -199,7 +199,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       walls: [0xf0e0c0, 0xe8d5b0, 0xdac59a],
       roofs: [0xc96a3b, 0xb85d33],
       band: 0xfff4dd,
-      floors: [6, 12],
+      floors: [4, 8],
       plaza: 50,
       road: 64,
       rings: [84, 114],
@@ -213,7 +213,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       walls: [0xdfe5ea, 0xc9d4dc, 0x9fb6c6],
       roofs: [0x6b7684, 0x59636f],
       band: 0x8fd8e8,
-      floors: [10, 22],
+      floors: [7, 14],
       plaza: 54,
       road: 68,
       rings: [88, 116],
@@ -317,6 +317,8 @@ function city(B: Bricks, s: CityStyle, seed: number): void {
       const h2 = hash2(seed + n * 29, ri * 11 + 3);
       const w = 11 + h1 * 6;
       const height = (s.floors[0] + h2 * (s.floors[1] - s.floors[0])) * 2.4;
+      // Paved plinth so the tower reads as sitting on the ground, not sunk in grass.
+      B.add(x, 0, z, w + 4, 1.4, w + 4, 0xc4c9cf, { ry: -a });
       B.add(x, 1, z, w, height, w, s.walls[n % s.walls.length], { ry: -a, studs: true });
       B.add(x, 1 + height, z, w + 1.6, 2, w + 1.6, s.roofs[n % s.roofs.length], { ry: -a });
       for (let y = 5; y < height - 3; y += 5.5) {
