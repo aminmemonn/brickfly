@@ -48,6 +48,7 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
   const east = new THREE.Vector3();
   const north = new THREE.Vector3();
   const up = new THREE.Vector3();
+  const probe = new THREE.Vector3();
   const q = new THREE.Quaternion();
   const qy = new THREE.Quaternion();
   const qf = new THREE.Quaternion();
@@ -115,6 +116,19 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
     up.copy(dir);
     tangentBasis(up, east, north);
     basisQuat(east, up, north, q);
+
+    // A hamlet's flat plate only looks grounded on near-level land, so reject
+    // slopes where the footprint would bury the uphill side.
+    let hMin = h;
+    let hMax = h;
+    for (const [ex, nz] of [[26, 0], [-26, 0], [0, 26], [0, -26]] as const) {
+      probe.copy(dir).multiplyScalar(PLANET_R).addScaledVector(east, ex).addScaledVector(north, nz).normalize();
+      const ph = terrain.height(probe);
+      if (ph < hMin) hMin = ph;
+      if (ph > hMax) hMax = ph;
+    }
+    if (hMax - hMin > BRICK_H * 1.6) continue;
+
     const baseR = PLANET_R + Math.ceil(h / BRICK_H) * BRICK_H + 0.2;
 
     const isVillage = villages < 150 && (groves >= 260 || rand() < 0.4);

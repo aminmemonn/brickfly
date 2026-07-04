@@ -33,6 +33,7 @@ interface Anchor {
   plateau: number;
   r0: number;
   r1: number;
+  cosPad: number;
 }
 
 const PALETTE = {
@@ -56,19 +57,23 @@ export class Terrain {
   private noise = new Simplex(20260702);
   private anchors: Anchor[] = [];
 
+  private contDirs = CONTINENTS.map(([lat, lon, r]) => ({
+    dir: latLonToDir(lat * DEG2RAD, lon * DEG2RAD),
+    r
+  }));
+
   constructor() {
     for (const lm of LANDMARKS) {
       if (!lm.flat) continue;
       const dir = latLonToDir(lm.lat * DEG2RAD, lm.lon * DEG2RAD);
       const r0 = lm.flat / PLANET_R;
-      this.anchors.push({ dir, plateau: lm.plateau ?? 10, r0, r1: r0 * 2.2 });
+      // Flatten the pad to the natural ground level here (never below the
+      // authored minimum) so the monument sits flush with its surroundings
+      // instead of at the bottom of an artificial crater.
+      const plateau = Math.max(this.rawHeight(dir), lm.plateau ?? 10);
+      this.anchors.push({ dir, plateau, r0, r1: r0 * 2.2, cosPad: Math.cos(r0 * 1.15) });
     }
   }
-
-  private contDirs = CONTINENTS.map(([lat, lon, r]) => ({
-    dir: latLonToDir(lat * DEG2RAD, lon * DEG2RAD),
-    r
-  }));
 
   private continentMask(d: THREE.Vector3): number {
     const wobble = this.noise.fbm(d.x * 3.1, d.y * 3.1, d.z * 3.1, 3) * 0.055;
@@ -115,6 +120,14 @@ export class Terrain {
     if (h <= 0.5) {
       const depth = clamp(-h / 100, 0, 1);
       return out.copy(PALETTE.floor).lerp(PALETTE.deepFloor, depth);
+    }
+    // Landmark pads read as manicured lawn no matter how high the natural
+    // ground is raised to keep the monument flush with its surroundings.
+    for (const a of this.anchors) {
+      if (d.dot(a.dir) > a.cosPad) {
+        const g = this.noise.noise3(d.x * 7.3 + 11, d.y * 7.3, d.z * 7.3);
+        return out.copy(g > 0 ? PALETTE.grass1 : PALETTE.grass2);
+      }
     }
     const lat = Math.abs(Math.asin(clamp(d.y, -1, 1)));
     const v = this.noise.noise3(d.x * 7.3 + 11, d.y * 7.3, d.z * 7.3);
