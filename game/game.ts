@@ -15,6 +15,7 @@ import { Explosion } from './explosion';
 import { LandmarkManager } from './landmarks';
 import { AudioManager, RADIO_STATIONS } from './audio';
 import { Ambient } from './ambient';
+import { SkyLife } from './skylife';
 import { CityLife } from './life';
 import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
@@ -54,6 +55,7 @@ export class Game {
   private explosion!: Explosion;
   private landmarks!: LandmarkManager;
   private ambient!: Ambient;
+  private skyLife!: SkyLife;
   private life!: CityLife;
   private audio = new AudioManager();
   private input = new Input();
@@ -142,6 +144,8 @@ export class Game {
     this.scene.add(this.clouds);
     this.ambient = new Ambient(this.terrain);
     this.scene.add(this.ambient.group);
+    this.skyLife = new SkyLife(this.terrain);
+    this.scene.add(this.skyLife.group);
 
     progress(66, 'Raising landmarks');
     await nextFrame();
@@ -346,6 +350,8 @@ export class Game {
     this.water.update(this.elapsed, this.sky.sunDir, this.sky.dayMix, this.fogColor, this.fogNear, this.fogFar);
     updateClouds(this.clouds, dt);
     this.ambient.update(this.elapsed);
+    this.skyLife.update(this.elapsed);
+    this.landmarks.updateAds(this.elapsed);
     this.life.update(dt, this.elapsed);
     this.updateLighting();
 

@@ -4,6 +4,7 @@ import { CityFrame } from './life';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
 import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, hash2, DEG2RAD } from './util';
+import { NYC_AD_TOWERS, createAdScreens, AdScreens } from './adscreens';
 import { bus } from './bus';
 
 const DISCOVERED_KEY = 'brickfly.discovered';
@@ -263,7 +264,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       trees: 10
     }
   },
-  nyc: { frame: { ring: 72, plaza: 0, groundY: 5 } }
+  nyc: { frame: { ring: 40, plaza: 42, groundY: 3.4 } }
 };
 
 /** Generic brick city district: plaza, roads, housing rings, trees, lamps. */
@@ -369,87 +370,72 @@ function eiffel(B: Bricks): void {
 
 function nyc(B: Bricks): void {
   const greys = [0x9aa2ab, 0x7f8790, 0xb0b6bd, 0x89929b, 0x848c95, 0xa7adb4];
-  const glowColors = [0x28d8ff, 0xff3d8e, 0xffd428, 0x7cff3a, 0xff7a1a, 0x9d5cff];
   const win = 0xf7d354;
 
-  // Island street plate (kept compact so the district reads as a skyline)
-  B.add(0, 0, 5, 132, 3, 190, 0x6a707a);
+  // Broad Manhattan street plate with paler avenue stripes
+  B.add(0, 0, 0, 200, 3, 300, 0x6a707a);
+  for (let ax = -80; ax <= 80; ax += 40) B.add(ax, 3.1, 0, 6, 0.3, 300, 0x565b63);
+  for (let az = -120; az <= 120; az += 40) B.add(0, 3.1, az, 200, 0.3, 6, 0x565b63);
 
   // Central Park up north
-  B.add(0, 3, -78, 84, 2.5, 52, 0x3fa021, { studs: true });
-  for (let i = 0; i < 14; i++) {
-    const tx = (hash2(i, 3) - 0.5) * 72;
-    const tz = -78 + (hash2(i, 7) - 0.5) * 42;
+  B.add(0, 3, -125, 120, 2.5, 60, 0x3fa021, { studs: true });
+  for (let i = 0; i < 22; i++) {
+    const tx = (hash2(i, 3) - 0.5) * 108;
+    const tz = -125 + (hash2(i, 7) - 0.5) * 50;
     B.add(tx, 5.5, tz, 4, 6 + hash2(i, 11) * 5, 4, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
 
-  // City blocks on the avenue grid; Times Square towers carry glowing ads
-  let bi = 0;
-  for (let gx = -2; gx <= 2; gx++) {
-    for (let gz = 0; gz <= 4; gz++) {
-      if ((gx === 0 && gz === 2) || (gx === 1 && gz === 1) || (gx === -1 && gz === 4)) {
-        continue; // plazas reserved for the hero buildings
-      }
-      const x = gx * 26;
-      const z = gz * 30 - 42;
-      const r = hash2(gx * 7 + 31, gz * 13 + 5);
-      const w = 13 + r * 6;
-      const midtown = Math.max(0, 1 - Math.abs(gz - 1.5) * 0.28 - Math.abs(gx) * 0.14);
-      const h = 22 + r * 30 + midtown * 58;
-      B.add(x, 3, z, w, h, w, greys[bi % greys.length], { studs: true });
-      for (let y = 12; y < h - 6; y += 12) B.add(x, 3 + y, z, w + 0.7, 1.1, w + 0.7, win, { glow: true });
+  // Times Square canyon: tall towers that carry the animated ad screens
+  NYC_AD_TOWERS.forEach((t, i) => {
+    B.add(t.x, 3, t.z, t.w, t.h, t.w, greys[i % greys.length], { studs: true });
+    for (let y = 14; y < t.h - 8; y += 13) {
+      B.add(t.x, 3 + y, t.z, t.w + 0.8, 1.2, t.w + 0.8, win, { glow: true });
+    }
+    // rooftop crown
+    B.add(t.x, 3 + t.h, t.z, t.w * 0.5, 8, t.w * 0.5, greys[(i + 3) % greys.length]);
+  });
 
-      if (Math.abs(gx) <= 1 && gz <= 2) {
-        const ads = 2 + Math.floor(r * 3);
-        for (let a = 0; a < ads; a++) {
-          const gy = 8 + hash2(bi, a * 5) * h * 0.55;
-          const side = hash2(a, bi + 2) > 0.5 ? 1 : -1;
-          const gw = 9 + hash2(a * 7, bi) * 8;
-          const gh = 8 + hash2(a, bi * 2) * 9;
-          const color = glowColors[(bi + a) % glowColors.length];
-          if (hash2(a * 9, bi) > 0.5) {
-            B.add(x + side * (w / 2 + 0.55), 3 + gy, z + (hash2(a * 3, bi) - 0.5) * w * 0.4, 1, gh, gw, color, { glow: true });
-          } else {
-            B.add(x + (hash2(a * 3, bi) - 0.5) * w * 0.4, 3 + gy, z + side * (w / 2 + 0.55), gw, gh, 1, color, { glow: true });
-          }
-        }
-      }
+  // Outer filler blocks so the skyline has depth around the canyon
+  let bi = 0;
+  for (let gx = -3; gx <= 3; gx++) {
+    for (let gz = -2; gz <= 3; gz++) {
+      if (Math.abs(gx) < 2 && gz >= -1 && gz <= 1) continue; // leave the canyon clear
+      const x = gx * 34;
+      const z = gz * 40 - 10;
+      const r = hash2(gx * 7 + 31, gz * 13 + 5);
+      const w = 18 + r * 10;
+      const h = 40 + r * 70;
+      B.add(x, 3, z, w, h, w, greys[bi % greys.length], { studs: true });
+      for (let y = 14; y < h - 8; y += 14) B.add(x, 3 + y, z, w + 0.8, 1.1, w + 0.8, win, { glow: true });
       bi++;
     }
   }
 
-  // Empire State Building
-  B.add(0, 3, 9, 24, 42, 24, 0xaab1b9, { studs: true });
-  B.add(0, 45, 9, 17, 26, 17, 0xaab1b9);
-  B.add(0, 71, 9, 11, 15, 11, 0xaab1b9);
-  B.add(0, 86, 9, 5, 7, 5, 0xc0c6cc);
-  B.add(0, 93, 9, 1.8, 12, 1.8, 0xd9dde1);
-  for (let y = 10; y < 38; y += 9) B.add(0, 3 + y, 9, 24.7, 1.1, 24.7, win, { glow: true });
-  // Jumbo screen facing the square
-  B.add(0, 28, 21.4, 16, 11, 1, 0x28d8ff, { glow: true });
+  // Empire State Building (east of the square)
+  B.add(74, 3, 20, 30, 78, 30, 0xaab1b9, { studs: true });
+  B.add(74, 81, 20, 21, 40, 21, 0xaab1b9);
+  B.add(74, 121, 20, 13, 22, 13, 0xc0c6cc);
+  B.add(74, 143, 20, 2.4, 20, 2.4, 0xd9dde1);
+  for (let y = 12; y < 70; y += 12) B.add(74, 3 + y, 20, 30.7, 1.2, 30.7, win, { glow: true });
 
-  // Chrysler Building
-  B.add(28, 3, -23, 15, 58, 15, 0xbfc9d2, { studs: true });
-  for (let i = 0; i < 7; i++) {
-    B.add(28, 61 + i * 2.8, -23, 14 - i * 1.9, 2.8, 14 - i * 1.9, 0xd3dde6);
+  // McBrick's burger joint on the plaza with golden arches
+  burgerJoint(B, -14, -104);
+  burgerJoint(B, 20, 60);
+}
+
+/** A little fast-food stand crowned with golden arches. */
+function burgerJoint(B: Bricks, cx: number, cz: number): void {
+  const red = 0xd5202b;
+  const gold = 0xffc21e;
+  B.add(cx, 3, cz, 20, 12, 16, red, { studs: true });
+  B.add(cx, 15, cz, 21, 2, 17, 0xf4f4f2);
+  B.add(cx, 3, cz + 8.2, 6, 8, 1, 0x9fd8ff, { glow: true }); // lit doorway/window
+  // two golden arches on the roof
+  for (const ax of [-5, 5]) {
+    B.add(cx + ax - 2.4, 17, cz, 1.8, 10, 2, gold);
+    B.add(cx + ax + 2.4, 17, cz, 1.8, 10, 2, gold);
+    B.add(cx + ax, 26.5, cz, 6.8, 2, 2, gold);
   }
-  B.add(28, 81, -23, 1.4, 10, 1.4, 0xe3eaf0);
-
-  // One World Trade Center
-  B.add(-26, 3, 74, 19, 26, 19, 0xc7d3dd, { studs: true });
-  B.add(-26, 29, 74, 15, 32, 15, 0xbcccd9);
-  B.add(-26, 61, 74, 12, 24, 12, 0xc7d3dd);
-  B.add(-26, 85, 74, 1.8, 18, 1.8, 0xdde6ec);
-  for (let y = 8; y < 52; y += 10) B.add(-26, 3 + y, 74, 19.7, 1.1, 19.7, win, { glow: true });
-  B.add(-26, 24, 63.8, 14, 10, 1, 0xff3d8e, { glow: true });
-
-  // Lady Liberty off the southern tip
-  B.add(-12, 0, 104, 10, 5, 10, 0xd9c49a, { studs: true });
-  B.add(-12, 5, 104, 4, 4, 4, 0xb8c4a8);
-  B.add(-12, 9, 104, 3, 11, 3, 0x7fae8f);
-  B.add(-10.2, 16, 104, 1.2, 7, 1.2, 0x7fae8f);
-  B.add(-10.2, 23.5, 104, 1.6, 2, 1.6, 0xffd428, { glow: true });
-  B.add(-12, 20, 104, 2.2, 2.4, 2.2, 0x8fbc9f);
 }
 
 function taj(B: Bricks): void {
@@ -693,6 +679,7 @@ export class LandmarkManager {
   readonly group = new THREE.Group();
   readonly cities: CityFrame[] = [];
   private items: PlacedLandmark[] = [];
+  private ads: AdScreens[] = [];
   private discovered = new Set<string>();
   private nearId: string | null = null;
 
@@ -732,7 +719,13 @@ export class LandmarkManager {
       if (cfg?.style) city(B, cfg.style, Math.abs(def.lat * 7 + def.lon));
 
       const group = B.build();
-      if (def.id === 'nyc') group.scale.setScalar(1.2);
+      if (def.id === 'nyc') {
+        // Attach the animated Times Square billboards as children so they ride
+        // the group's placement on the globe.
+        const screens = createAdScreens(NYC_AD_TOWERS);
+        for (const o of screens.objects) group.add(o);
+        this.ads.push(screens);
+      }
       // Snap the base onto the top of the quantized voxel terrain so
       // monuments sit flush on the bricks instead of sinking into them.
       const baseR = PLANET_R + Math.ceil(Math.max(anchorH, 1) / BRICK_H) * BRICK_H + 0.2;
@@ -758,6 +751,10 @@ export class LandmarkManager {
     }
 
     this.emitCollection();
+  }
+
+  updateAds(elapsed: number): void {
+    for (const a of this.ads) a.update(elapsed);
   }
 
   update(planePos: THREE.Vector3): void {

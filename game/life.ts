@@ -20,8 +20,8 @@ const SHIRT_COLORS = [0xd6382c, 0x2c6bd6, 0x4cb227, 0xf7a231, 0x9d5cff, 0xf4f4f2
 const PANTS_COLORS = [0x33363c, 0x2c4a6b, 0x5a4632, 0x3f5a4e];
 const SKIN = 0xf5c542;
 
-const CARS_PER_CITY = 10;
-const PEOPLE_PER_CITY = 22;
+const CARS_PER_CITY = 16;
+const PEOPLE_PER_CITY = 34;
 
 interface Car {
   frame: CityFrame;
