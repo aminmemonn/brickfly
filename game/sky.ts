@@ -106,7 +106,8 @@ export class Sky {
   }
 
   update(dt: number, camPos: THREE.Vector3, playerUp: THREE.Vector3): void {
-    this.time += dt;
+    // Nights pass faster than days so the world spends most time lit.
+    this.time += dt * (this.dayMix < 0.25 ? 2.4 : 1);
     const angle = (this.time / DAY_LENGTH) * Math.PI * 2;
     this.sunDir.set(Math.cos(angle), 0.22, Math.sin(angle)).normalize();
 

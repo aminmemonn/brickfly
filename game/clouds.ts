@@ -56,7 +56,9 @@ export function buildClouds(count = 64): THREE.Group {
     vertexColors: true,
     flatShading: true,
     roughness: 0.9,
-    metalness: 0
+    metalness: 0,
+    emissive: 0x8fa0bd,
+    emissiveIntensity: 0.16
   });
   const mesh = new THREE.InstancedMesh(makeAOBox(), mat, boxes.length);
   const m = new THREE.Matrix4();

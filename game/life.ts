@@ -20,8 +20,8 @@ const SHIRT_COLORS = [0xd6382c, 0x2c6bd6, 0x4cb227, 0xf7a231, 0x9d5cff, 0xf4f4f2
 const PANTS_COLORS = [0x33363c, 0x2c4a6b, 0x5a4632, 0x3f5a4e];
 const SKIN = 0xf5c542;
 
-const CARS_PER_CITY = 8;
-const PEOPLE_PER_CITY = 14;
+const CARS_PER_CITY = 10;
+const PEOPLE_PER_CITY = 22;
 
 interface Car {
   frame: CityFrame;
@@ -72,7 +72,7 @@ export class CityLife {
 
   constructor(cities: CityFrame[]) {
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const headGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.55, 8);
+    const headGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.72, 8);
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.05 });
     const skinMat = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.4 });
 
@@ -174,7 +174,7 @@ export class CityLife {
       const lz = p.az + (p.bz - p.az) * u;
       const dirSign = wave < 1 ? 1 : -1;
       const heading = -Math.atan2((p.bz - p.az) * dirSign, (p.bx - p.ax) * dirSign);
-      const bob = Math.abs(Math.sin(elapsed * 5 + p.phase)) * 0.16;
+      const bob = Math.abs(Math.sin(elapsed * 5 + p.phase)) * 0.2;
 
       qYaw.setFromAxisAngle(Y_AXIS, heading);
       qFinal.copy(p.cityQuat).multiply(qYaw);
@@ -183,15 +183,15 @@ export class CityLife {
       vPos.copy(p.frame.origin)
         .addScaledVector(p.frame.east, lx)
         .addScaledVector(p.frame.north, lz)
-        .addScaledVector(p.frame.up, base + 0.5);
-      mTmp.compose(vPos, qFinal, sTmp.set(1.0, 1.0, 0.62));
+        .addScaledVector(p.frame.up, base + 0.65);
+      mTmp.compose(vPos, qFinal, sTmp.set(1.3, 1.3, 0.8));
       this.legs.setMatrixAt(i, mTmp);
 
-      vPos.addScaledVector(p.frame.up, 0.95);
-      mTmp.compose(vPos, qFinal, sTmp.set(1.15, 0.95, 0.7));
+      vPos.addScaledVector(p.frame.up, 1.25);
+      mTmp.compose(vPos, qFinal, sTmp.set(1.5, 1.25, 0.9));
       this.torso.setMatrixAt(i, mTmp);
 
-      vPos.addScaledVector(p.frame.up, 0.78);
+      vPos.addScaledVector(p.frame.up, 1.0);
       mTmp.compose(vPos, qFinal, sTmp.set(1, 1, 1));
       this.head.setMatrixAt(i, mTmp);
     });

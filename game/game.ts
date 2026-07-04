@@ -18,6 +18,7 @@ import { Ambient } from './ambient';
 import { CityLife } from './life';
 import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
+import { buildSettlements } from './settlements';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
 import { dirToLatLon, RAD2DEG } from './util';
 
@@ -149,6 +150,7 @@ export class Game {
     this.scene.add(this.landmarks.group);
     this.life = new CityLife(this.landmarks.cities);
     this.scene.add(this.life.group);
+    this.scene.add(buildSettlements(this.terrain));
 
     progress(82, 'Stacking terrain');
     await nextFrame();
@@ -189,7 +191,7 @@ export class Game {
     const at = new URLSearchParams(window.location.search).get('at');
     if (at) {
       const def = LANDMARKS.find((lm) => lm.id === at);
-      if (def) this.flight.reset(def.lat, def.lon - 4, 90, 120);
+      if (def) this.flight.reset(def.lat, def.lon - 2.2, 90, 150);
     }
     this.mode = 'playing';
     this.rig.beginTransition();
@@ -388,9 +390,13 @@ export class Game {
     const day = this.sky.dayMix;
     const golden = this.sky.golden;
 
-    this.sun.intensity = 0.25 + day * 2.1;
-    this.sun.color.setHex(0xffffff).lerp(new THREE.Color(0xffb070), golden);
-    this.hemi.intensity = 0.32 + day * 0.6;
+    // A moonlight floor keeps the night readable instead of pitch black.
+    this.sun.intensity = 0.55 + day * 1.8;
+    this.sun.color
+      .setHex(0xffffff)
+      .lerp(new THREE.Color(0xffb070), golden)
+      .lerp(new THREE.Color(0x93a7cc), (1 - day) * 0.7);
+    this.hemi.intensity = 0.42 + day * 0.55;
 
     // Distance haze: match the horizon tint, disabled for the menu's
     // from-space view of the whole planet.

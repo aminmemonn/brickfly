@@ -320,7 +320,7 @@ function city(B: Bricks, s: CityStyle, seed: number): void {
       B.add(x, 1, z, w, height, w, s.walls[n % s.walls.length], { ry: -a, studs: true });
       B.add(x, 1 + height, z, w + 1.6, 2, w + 1.6, s.roofs[n % s.roofs.length], { ry: -a });
       for (let y = 5; y < height - 3; y += 5.5) {
-        B.add(x, 1 + y, z, w + 0.5, 0.9, w + 0.5, s.band, { ry: -a, glow: s.glow && y > height * 0.3 });
+        B.add(x, 1 + y, z, w + 0.5, 0.9, w + 0.5, s.band, { ry: -a, glow: true });
       }
       n++;
     }
@@ -370,40 +370,40 @@ function nyc(B: Bricks): void {
   const glowColors = [0x28d8ff, 0xff3d8e, 0xffd428, 0x7cff3a, 0xff7a1a, 0x9d5cff];
   const win = 0xf7d354;
 
-  // Island street plate
-  B.add(0, 0, 5, 152, 3, 300, 0x565b63);
+  // Island street plate (kept compact so the district reads as a skyline)
+  B.add(0, 0, 5, 132, 3, 190, 0x6a707a);
 
   // Central Park up north
-  B.add(0, 3, -100, 92, 2.5, 66, 0x3fa021, { studs: true });
+  B.add(0, 3, -78, 84, 2.5, 52, 0x3fa021, { studs: true });
   for (let i = 0; i < 14; i++) {
-    const tx = (hash2(i, 3) - 0.5) * 78;
-    const tz = -100 + (hash2(i, 7) - 0.5) * 52;
+    const tx = (hash2(i, 3) - 0.5) * 72;
+    const tz = -78 + (hash2(i, 7) - 0.5) * 42;
     B.add(tx, 5.5, tz, 4, 6 + hash2(i, 11) * 5, 4, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
 
   // City blocks on the avenue grid; Times Square towers carry glowing ads
   let bi = 0;
   for (let gx = -2; gx <= 2; gx++) {
-    for (let gz = 0; gz <= 6; gz++) {
-      if ((gx === 0 && gz === 2) || (gx === 1 && gz === 1) || (gx === -1 && gz === 5)) {
+    for (let gz = 0; gz <= 4; gz++) {
+      if ((gx === 0 && gz === 2) || (gx === 1 && gz === 1) || (gx === -1 && gz === 4)) {
         continue; // plazas reserved for the hero buildings
       }
-      const x = gx * 28;
-      const z = gz * 32 - 55;
+      const x = gx * 26;
+      const z = gz * 30 - 42;
       const r = hash2(gx * 7 + 31, gz * 13 + 5);
       const w = 13 + r * 6;
       const midtown = Math.max(0, 1 - Math.abs(gz - 1.5) * 0.28 - Math.abs(gx) * 0.14);
       const h = 22 + r * 30 + midtown * 58;
       B.add(x, 3, z, w, h, w, greys[bi % greys.length], { studs: true });
-      for (let y = 12; y < h - 6; y += 12) B.add(x, 3 + y, z, w + 0.7, 1.1, w + 0.7, win);
+      for (let y = 12; y < h - 6; y += 12) B.add(x, 3 + y, z, w + 0.7, 1.1, w + 0.7, win, { glow: true });
 
       if (Math.abs(gx) <= 1 && gz <= 2) {
         const ads = 2 + Math.floor(r * 3);
         for (let a = 0; a < ads; a++) {
           const gy = 8 + hash2(bi, a * 5) * h * 0.55;
           const side = hash2(a, bi + 2) > 0.5 ? 1 : -1;
-          const gw = 6 + hash2(a * 7, bi) * 6;
-          const gh = 5 + hash2(a, bi * 2) * 7;
+          const gw = 9 + hash2(a * 7, bi) * 8;
+          const gh = 8 + hash2(a, bi * 2) * 9;
           const color = glowColors[(bi + a) % glowColors.length];
           if (hash2(a * 9, bi) > 0.5) {
             B.add(x + side * (w / 2 + 0.55), 3 + gy, z + (hash2(a * 3, bi) - 0.5) * w * 0.4, 1, gh, gw, color, { glow: true });
@@ -422,7 +422,9 @@ function nyc(B: Bricks): void {
   B.add(0, 71, 9, 11, 15, 11, 0xaab1b9);
   B.add(0, 86, 9, 5, 7, 5, 0xc0c6cc);
   B.add(0, 93, 9, 1.8, 12, 1.8, 0xd9dde1);
-  for (let y = 10; y < 38; y += 9) B.add(0, 3 + y, 9, 24.7, 1.1, 24.7, win);
+  for (let y = 10; y < 38; y += 9) B.add(0, 3 + y, 9, 24.7, 1.1, 24.7, win, { glow: true });
+  // Jumbo screen facing the square
+  B.add(0, 28, 21.4, 16, 11, 1, 0x28d8ff, { glow: true });
 
   // Chrysler Building
   B.add(28, 3, -23, 15, 58, 15, 0xbfc9d2, { studs: true });
@@ -432,19 +434,20 @@ function nyc(B: Bricks): void {
   B.add(28, 81, -23, 1.4, 10, 1.4, 0xe3eaf0);
 
   // One World Trade Center
-  B.add(-28, 3, 105, 19, 26, 19, 0xc7d3dd, { studs: true });
-  B.add(-28, 29, 105, 15, 32, 15, 0xbcccd9);
-  B.add(-28, 61, 105, 12, 24, 12, 0xc7d3dd);
-  B.add(-28, 85, 105, 1.8, 18, 1.8, 0xdde6ec);
-  for (let y = 8; y < 52; y += 10) B.add(-28, 3 + y, 105, 19.7, 1.1, 19.7, win);
+  B.add(-26, 3, 74, 19, 26, 19, 0xc7d3dd, { studs: true });
+  B.add(-26, 29, 74, 15, 32, 15, 0xbcccd9);
+  B.add(-26, 61, 74, 12, 24, 12, 0xc7d3dd);
+  B.add(-26, 85, 74, 1.8, 18, 1.8, 0xdde6ec);
+  for (let y = 8; y < 52; y += 10) B.add(-26, 3 + y, 74, 19.7, 1.1, 19.7, win, { glow: true });
+  B.add(-26, 24, 63.8, 14, 10, 1, 0xff3d8e, { glow: true });
 
   // Lady Liberty off the southern tip
-  B.add(-14, 0, 172, 10, 5, 10, 0xd9c49a, { studs: true });
-  B.add(-14, 5, 172, 4, 4, 4, 0xb8c4a8);
-  B.add(-14, 9, 172, 3, 11, 3, 0x7fae8f);
-  B.add(-12.2, 16, 172, 1.2, 7, 1.2, 0x7fae8f);
-  B.add(-12.2, 23.5, 172, 1.6, 2, 1.6, 0xffd428, { glow: true });
-  B.add(-14, 20, 172, 2.2, 2.4, 2.2, 0x8fbc9f);
+  B.add(-12, 0, 104, 10, 5, 10, 0xd9c49a, { studs: true });
+  B.add(-12, 5, 104, 4, 4, 4, 0xb8c4a8);
+  B.add(-12, 9, 104, 3, 11, 3, 0x7fae8f);
+  B.add(-10.2, 16, 104, 1.2, 7, 1.2, 0x7fae8f);
+  B.add(-10.2, 23.5, 104, 1.6, 2, 1.6, 0xffd428, { glow: true });
+  B.add(-12, 20, 104, 2.2, 2.4, 2.2, 0x8fbc9f);
 }
 
 function taj(B: Bricks): void {
@@ -727,7 +730,7 @@ export class LandmarkManager {
       if (cfg?.style) city(B, cfg.style, Math.abs(def.lat * 7 + def.lon));
 
       const group = B.build();
-      if (def.id === 'nyc') group.scale.setScalar(1.6);
+      if (def.id === 'nyc') group.scale.setScalar(1.2);
       // Snap the base onto the top of the quantized voxel terrain so
       // monuments sit flush on the bricks instead of sinking into them.
       const baseR = PLANET_R + Math.ceil(Math.max(anchorH, 1) / BRICK_H) * BRICK_H + 0.2;
