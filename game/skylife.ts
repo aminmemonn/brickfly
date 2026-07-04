@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PLANET_R } from './constants';
 import { Terrain } from './terrain';
+import { LANDMARKS } from './landmark-data';
 import { latLonToDir, tangentBasis, hash2, DEG2RAD } from './util';
 
 /**
@@ -72,6 +73,18 @@ interface Bird {
   flapPhase: number;
 }
 
+interface Heli {
+  obj: THREE.Group;
+  center: THREE.Vector3;
+  east: THREE.Vector3;
+  north: THREE.Vector3;
+  orbitR: number;
+  alt: number;
+  speed: number;
+  phase: number;
+  rotor: THREE.Object3D;
+}
+
 const vPos = new THREE.Vector3();
 const vNext = new THREE.Vector3();
 const vUp = new THREE.Vector3();
@@ -98,6 +111,51 @@ function bannerTexture(text: string, bg: number): THREE.CanvasTexture {
   return tex;
 }
 
+const ZEPPELIN_ADS = ['BRICK  COLA', 'BRICKFLY  AIR', 'STUD  BULL', "McBRICK'S"];
+const ZEPPELIN_BG = [0xd42a1f, 0x0e8f9c, 0x1f57c4, 0xf2a10a];
+
+/** A blocky "pixel-board" advert like a stadium LED screen, for zeppelin sides. */
+function pixelAdTexture(text: string, bg: number): THREE.CanvasTexture {
+  const cols = 64;
+  const rows = 20;
+  const px = 12;
+  const c = document.createElement('canvas');
+  c.width = cols * px;
+  c.height = rows * px;
+  const g = c.getContext('2d')!;
+  const base = new THREE.Color(bg);
+  g.fillStyle = `rgb(${base.r * 255},${base.g * 255},${base.b * 255})`;
+  g.fillRect(0, 0, c.width, c.height);
+
+  // Draw the text onto an offscreen buffer, then sample it into a pixel grid so
+  // the letters read as chunky illuminated dots.
+  const tmp = document.createElement('canvas');
+  tmp.width = cols;
+  tmp.height = rows;
+  const tg = tmp.getContext('2d')!;
+  tg.fillStyle = '#000';
+  tg.fillRect(0, 0, cols, rows);
+  tg.fillStyle = '#fff';
+  tg.font = 'bold 13px system-ui, sans-serif';
+  tg.textAlign = 'center';
+  tg.textBaseline = 'middle';
+  tg.fillText(text, cols / 2, rows / 2 + 1);
+  const data = tg.getImageData(0, 0, cols, rows).data;
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const on = data[(y * cols + x) * 4] > 100;
+      g.fillStyle = on ? '#fff8c8' : `rgba(0,0,0,0.28)`;
+      g.beginPath();
+      g.arc(x * px + px / 2, y * px + px / 2, px * 0.4, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+
 function glowRingGeo(): THREE.TorusGeometry {
   const g = new THREE.TorusGeometry(9, 1.1, 8, 20);
   g.rotateX(Math.PI / 2);
@@ -110,6 +168,7 @@ export class SkyLife {
   private ufos: Ufo[] = [];
   private drifters: Drifter[] = [];
   private birds: Bird[] = [];
+  private helis: Heli[] = [];
 
   constructor(terrain: Terrain) {
     const box = new THREE.BoxGeometry(1, 1, 1);
@@ -333,6 +392,187 @@ export class SkyLife {
       this.group.add(obj);
       this.ufos.push({ obj, dir, alt: Math.max(terrain.height(dir), 1) + 190 + i * 40, phase: i * 2.1 });
     }
+
+    // --- Busy skies over every landmark: choppers, blimps, mega-balloons ---
+    const HELI_BODY = [0xd5202b, 0x2c6bd6, 0xf2a10a];
+    LANDMARKS.forEach((lm, si) => {
+      const dir = latLonToDir(lm.lat * DEG2RAD, lm.lon * DEG2RAD);
+      const east = new THREE.Vector3();
+      const north = new THREE.Vector3();
+      tangentBasis(dir, east, north);
+      const ground = Math.max(terrain.height(dir), 1);
+
+      // Helicopters circling low with spinning rotors.
+      for (let h = 0; h < 3; h++) {
+        const obj = new THREE.Group();
+        const bodyH = new THREE.Mesh(box, mat(HELI_BODY[h % HELI_BODY.length]));
+        bodyH.scale.set(4.5, 4.5, 10);
+        obj.add(bodyH);
+        const cockpit = new THREE.Mesh(box, glow(0x9fd8ff));
+        cockpit.scale.set(3.6, 3, 4);
+        cockpit.position.set(0, 0.6, -4.6);
+        obj.add(cockpit);
+        const boom = new THREE.Mesh(box, mat(0xdfe6ec));
+        boom.scale.set(1.5, 1.5, 11);
+        boom.position.set(0, 1, 8.5);
+        obj.add(boom);
+        const finH = new THREE.Mesh(box, mat(0x33363c));
+        finH.scale.set(1, 4.5, 2.4);
+        finH.position.set(0, 2.6, 13.5);
+        obj.add(finH);
+        for (const s of [-1, 1]) {
+          const skid = new THREE.Mesh(box, mat(0x33363c));
+          skid.scale.set(0.8, 0.8, 11);
+          skid.position.set(s * 2.6, -3, 0);
+          obj.add(skid);
+        }
+        const rotor = new THREE.Group();
+        rotor.position.set(0, 3.4, 0);
+        const blade1 = new THREE.Mesh(box, mat(0x2a2f36));
+        blade1.scale.set(30, 0.5, 2.2);
+        rotor.add(blade1);
+        const blade2 = new THREE.Mesh(box, mat(0x2a2f36));
+        blade2.scale.set(2.2, 0.5, 30);
+        rotor.add(blade2);
+        obj.add(rotor);
+        const tailRotor = new THREE.Mesh(box, mat(0x2a2f36));
+        tailRotor.scale.set(0.5, 7, 2);
+        tailRotor.position.set(1.2, 2.6, 13.5);
+        obj.add(tailRotor);
+        obj.scale.setScalar(2.8);
+        this.group.add(obj);
+        this.helis.push({
+          obj,
+          center: dir,
+          east,
+          north,
+          orbitR: 240 + h * 130,
+          alt: ground + 170 + h * 90,
+          speed: 0.16 + h * 0.05,
+          phase: hash2(si * 7 + h, 5) * Math.PI * 2,
+          rotor
+        });
+      }
+
+      // A big zeppelin with a pixel-board advert, cruising a slow wide loop.
+      {
+        const obj = new THREE.Group();
+        const hull = new THREE.Mesh(new THREE.SphereGeometry(10, 18, 12), mat(0xe4e9ee));
+        hull.scale.set(1, 1, 3.4);
+        obj.add(hull);
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(6, 14, 10), mat(0xd7dde3));
+        nose.scale.set(1, 1, 1.6);
+        nose.position.set(0, 0, -34);
+        obj.add(nose);
+        for (const [ax, ay] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+          const fin = new THREE.Mesh(box, mat(0xd42a1f));
+          fin.scale.set(ax ? 10 : 2, ay ? 10 : 2, 5);
+          fin.position.set(ax * 10, ay * 10, 30);
+          obj.add(fin);
+        }
+        const gondola = new THREE.Mesh(box, mat(0x4a5058));
+        gondola.scale.set(4, 3.5, 12);
+        gondola.position.set(0, -11, 0);
+        obj.add(gondola);
+        const adTex = pixelAdTexture(ZEPPELIN_ADS[si % ZEPPELIN_ADS.length], ZEPPELIN_BG[si % ZEPPELIN_BG.length]);
+        const adMat = new THREE.MeshBasicMaterial({ map: adTex, side: THREE.DoubleSide });
+        for (const s of [1, -1]) {
+          const panel = new THREE.Mesh(new THREE.PlaneGeometry(52, 15), adMat);
+          panel.position.set(s * 10.2, 0, 0);
+          panel.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+          obj.add(panel);
+        }
+        obj.scale.setScalar(2.2);
+        this.group.add(obj);
+        this.planes.push({
+          obj,
+          center: dir,
+          east,
+          north,
+          orbitR: 620 + hash2(si, 61) * 260,
+          alt: ground + 520 + hash2(si, 62) * 160,
+          speed: 0.022 + hash2(si, 63) * 0.014,
+          phase: hash2(si, 64) * Math.PI * 2
+        });
+      }
+
+      // Two extra banner planes buzzing the landmark.
+      for (let p = 0; p < 2; p++) {
+        const obj = new THREE.Group();
+        const body = new THREE.Mesh(box, mat(0xf4f4f2));
+        body.scale.set(2.4, 2, 7);
+        obj.add(body);
+        const wing = new THREE.Mesh(box, mat(0x2c6bd6));
+        wing.scale.set(13, 1, 3);
+        wing.position.set(0, 0.4, 0.5);
+        obj.add(wing);
+        const fin = new THREE.Mesh(box, mat(0xf4f4f2));
+        fin.scale.set(1, 3, 2);
+        fin.position.set(0, 1.4, 3.4);
+        obj.add(fin);
+        const adi = (si * 2 + p) % BANNER_ADS.length;
+        const banner = new THREE.Mesh(
+          new THREE.PlaneGeometry(64, 16),
+          new THREE.MeshBasicMaterial({ map: bannerTexture(BANNER_ADS[adi], BANNER_BG[adi]), side: THREE.DoubleSide })
+        );
+        banner.position.set(0, 0.4, 42);
+        banner.rotation.y = Math.PI / 2;
+        obj.add(banner);
+        obj.scale.setScalar(3.4);
+        this.group.add(obj);
+        this.planes.push({
+          obj,
+          center: dir,
+          east,
+          north,
+          orbitR: 380 + p * 160,
+          alt: ground + 300 + p * 120,
+          speed: 0.06 + p * 0.02,
+          phase: hash2(si * 5 + p, 66) * Math.PI * 2
+        });
+      }
+
+      // Two MEGA hot-air balloons hovering near the landmark, each with an ad.
+      for (let m = 0; m < 2; m++) {
+        const palette = BALLOON_PALETTES[(si + m) % BALLOON_PALETTES.length];
+        const obj = new THREE.Group();
+        RING_WIDTHS.forEach((w, ring) => {
+          const mm = new THREE.Mesh(box, mat(palette[ring % palette.length]));
+          mm.scale.set(w, 2.6, w);
+          mm.position.y = ring * 2.6;
+          obj.add(mm);
+        });
+        const basket = new THREE.Mesh(box, mat(0x8a6743));
+        basket.scale.set(3.2, 2.6, 3.2);
+        basket.position.y = -5.5;
+        obj.add(basket);
+        const adTex = bannerTexture(BALLOON_ADS[(si + m) % BALLOON_ADS.length], BALLOON_AD_BG[(si + m) % BALLOON_AD_BG.length]);
+        const adMat = new THREE.MeshBasicMaterial({ map: adTex, side: THREE.DoubleSide });
+        for (const s of [1, -1]) {
+          const panel = new THREE.Mesh(new THREE.PlaneGeometry(13, 6.5), adMat);
+          panel.position.set(s * 5.4, 5.2, 0);
+          panel.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+          obj.add(panel);
+        }
+        obj.scale.setScalar(5.2);
+        // Offset the balloon a few hundred units off the landmark centre.
+        const offA = (m + hash2(si, 71)) * Math.PI;
+        const offR = 260 + m * 140;
+        const bdir = dir
+          .clone()
+          .multiplyScalar(PLANET_R)
+          .addScaledVector(east, Math.cos(offA) * offR)
+          .addScaledVector(north, Math.sin(offA) * offR)
+          .normalize();
+        this.group.add(obj);
+        this.drifters.push({
+          obj,
+          dir: bdir,
+          alt: ground + 300 + m * 130,
+          phase: hash2(si * 3 + m, 72) * Math.PI * 2
+        });
+      }
+    });
   }
 
   update(elapsed: number): void {
@@ -353,6 +593,29 @@ export class SkyLife {
       p.obj.position.copy(vPos);
       p.obj.up.copy(vUp);
       p.obj.lookAt(vNext);
+    }
+
+    for (const h of this.helis) {
+      const a = elapsed * h.speed + h.phase;
+      vUp
+        .copy(h.center)
+        .multiplyScalar(PLANET_R)
+        .addScaledVector(h.east, Math.cos(a) * h.orbitR)
+        .addScaledVector(h.north, Math.sin(a) * h.orbitR)
+        .normalize();
+      vPos.copy(vUp).multiplyScalar(PLANET_R + h.alt);
+      const a2 = a + 0.02;
+      vNext
+        .copy(h.center)
+        .multiplyScalar(PLANET_R)
+        .addScaledVector(h.east, Math.cos(a2) * h.orbitR)
+        .addScaledVector(h.north, Math.sin(a2) * h.orbitR)
+        .normalize()
+        .multiplyScalar(PLANET_R + h.alt);
+      h.obj.position.copy(vPos);
+      h.obj.up.copy(vUp);
+      h.obj.lookAt(vNext);
+      h.rotor.rotation.y = elapsed * 22;
     }
 
     for (const bird of this.birds) {

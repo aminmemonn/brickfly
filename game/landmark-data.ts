@@ -21,8 +21,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 48.858,
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
-    radius: 720,
-    flat: 400,
+    radius: 1150,
+    flat: 860,
     plateau: 10
   },
   {
@@ -32,8 +32,19 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 40.712,
     lon: -74.006,
     fact: 'A skyline of stacked grey bricks with yellow window studs. Rush hour is still faster up here.',
-    radius: 1300,
-    flat: 660,
+    radius: 2200,
+    flat: 1450,
+    plateau: 6
+  },
+  {
+    id: 'cali',
+    name: 'California Beach',
+    location: 'Santa Monica, USA',
+    lat: 34.01,
+    lon: -118.5,
+    fact: 'Sun, surf and a brick pier with a Ferris wheel. The lifeguards never blink — they are made of bricks.',
+    radius: 1450,
+    flat: 820,
     plateau: 6
   },
   {
@@ -43,8 +54,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 27.175,
     lon: 78.042,
     fact: 'White bricks, teal accents, perfect symmetry — a monument you could take apart and rebuild forever.',
-    radius: 720,
-    flat: 400,
+    radius: 1150,
+    flat: 860,
     plateau: 9
   },
   {
@@ -54,7 +65,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 40.432,
     lon: 116.57,
     fact: 'It winds over every brick hill in sight. Legend says you can see it from the menu screen.',
-    radius: 580
+    radius: 900
   },
   {
     id: 'sydney',
@@ -63,8 +74,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: -33.857,
     lon: 151.215,
     fact: 'Those white sail shells took the real architects 14 years. These bricks clicked together in seconds.',
-    radius: 760,
-    flat: 420,
+    radius: 1180,
+    flat: 900,
     plateau: 6
   },
   {
@@ -74,8 +85,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 41.89,
     lon: 12.492,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
-    radius: 720,
-    flat: 400,
+    radius: 1150,
+    flat: 860,
     plateau: 10
   },
   {
@@ -85,8 +96,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 35.361,
     lon: 138.728,
     fact: 'A perfect cone with a snow-white cap. The bravest pilots buzz the crater rim.',
-    radius: 640,
-    flat: 320,
+    radius: 950,
+    flat: 480,
     plateau: 8
   },
   {
@@ -96,8 +107,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 29.979,
     lon: 31.134,
     fact: 'Step pyramids in tan brick, at true proportions. The originals were also built one block at a time.',
-    radius: 700,
-    flat: 360,
+    radius: 1150,
+    flat: 880,
     plateau: 8
   },
   {
@@ -107,8 +118,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 51.5,
     lon: -0.124,
     fact: 'The clock tower of Westminster in warm tan brick. It is always brick o’clock somewhere.',
-    radius: 720,
-    flat: 400,
+    radius: 1150,
+    flat: 860,
     plateau: 8
   },
   {
@@ -118,8 +129,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 25.197,
     lon: 55.274,
     fact: 'The tallest stack on the planet — 828 metres of glass, or about 270 bricks straight up.',
-    radius: 820,
-    flat: 460,
+    radius: 1350,
+    flat: 1020,
     plateau: 5
   }
 ];

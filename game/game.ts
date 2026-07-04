@@ -16,6 +16,7 @@ import { LandmarkManager, landmarkScale } from './landmarks';
 import { AudioManager, RADIO_STATIONS } from './audio';
 import { Ambient } from './ambient';
 import { SkyLife } from './skylife';
+import { SeaLife } from './sealife';
 import { CityLife } from './life';
 import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
@@ -56,6 +57,7 @@ export class Game {
   private landmarks!: LandmarkManager;
   private ambient!: Ambient;
   private skyLife!: SkyLife;
+  private seaLife!: SeaLife;
   private life!: CityLife;
   private audio = new AudioManager();
   private input = new Input();
@@ -71,8 +73,8 @@ export class Game {
   private regionTimer = 0;
   private lastRegion = '';
   private fogColor = new THREE.Color(0xbfe3ff);
-  private fogNear = 1400;
-  private fogFar = 9000;
+  private fogNear = 2200;
+  private fogFar = 15000;
   private menuAngle = 0;
   private raf = 0;
   private disposed = false;
@@ -94,7 +96,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.5, 26000);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.5, 60000);
     this.camera.position.set(0, 0, PLANET_R * 2.7);
     this.scene.fog = new THREE.Fog(0xbfe3ff, this.fogNear, this.fogFar);
 
@@ -146,6 +148,8 @@ export class Game {
     this.scene.add(this.ambient.group);
     this.skyLife = new SkyLife(this.terrain);
     this.scene.add(this.skyLife.group);
+    this.seaLife = new SeaLife(this.terrain);
+    this.scene.add(this.seaLife.group);
 
     progress(66, 'Raising landmarks');
     await nextFrame();
@@ -356,6 +360,7 @@ export class Game {
     updateClouds(this.clouds, dt);
     this.ambient.update(this.elapsed);
     this.skyLife.update(this.elapsed);
+    this.seaLife.update(this.elapsed);
     this.landmarks.updateAds(this.elapsed);
     this.life.update(dt, this.elapsed);
     this.updateLighting();
@@ -412,8 +417,8 @@ export class Game {
     // Distance haze: match the horizon tint, disabled for the menu's
     // from-space view of the whole planet.
     const menuView = this.mode === 'menu';
-    this.fogNear = menuView ? 30000 : 1400;
-    this.fogFar = menuView ? 40000 : 9000;
+    this.fogNear = menuView ? 45000 : 2200;
+    this.fogFar = menuView ? 58000 : 15000;
     this.fogColor.copy(FOG_NIGHT).lerp(FOG_DAY, day).lerp(FOG_GOLDEN, golden * 0.5);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.fogColor);

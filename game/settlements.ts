@@ -4,8 +4,8 @@ import { Terrain } from './terrain';
 import { LANDMARKS } from './landmark-data';
 import { latLonToDir, tangentBasis, basisQuat, makeAOBox, clamp, DEG2RAD } from './util';
 
-const MAX_BRICKS = 3200;
-const MAX_GLOW = 900;
+const MAX_BRICKS = 18000;
+const MAX_GLOW = 3000;
 
 const WALLS = [0xe8dcc0, 0xc46a4a, 0xd9c49a, 0x9fb6c6, 0xf0e6d2, 0xb05b3e];
 const ROOFS = [0xb5533c, 0x555b63, 0x8a6743, 0x3f5a4e];
@@ -93,7 +93,7 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
     }
   };
 
-  for (let attempt = 0; attempt < 5000 && (villages < 150 || groves < 260); attempt++) {
+  for (let attempt = 0; attempt < 16000 && (villages < 420 || groves < 720); attempt++) {
     const z = rand() * 2 - 1;
     const phi = rand() * Math.PI * 2;
     const r = Math.sqrt(Math.max(0, 1 - z * z));
@@ -131,7 +131,7 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
 
     const baseR = PLANET_R + Math.ceil(h / BRICK_H) * BRICK_H + 0.2;
 
-    const isVillage = villages < 150 && (groves >= 260 || rand() < 0.4);
+    const isVillage = villages < 420 && (groves >= 720 || rand() < 0.42);
     if (isVillage) {
       villages++;
       const houses = 3 + Math.floor(rand() * 4);

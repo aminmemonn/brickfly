@@ -15,16 +15,17 @@ const DISCOVERED_KEY = 'brickfly.discovered';
  * this factor and the city frames (cars/people) scale to match.
  */
 export const LANDMARK_SCALE: Record<string, number> = {
-  nyc: 3.2,
-  eiffel: 2.1,
-  bigben: 2.1,
-  colosseum: 2.1,
-  taj: 2.1,
-  sydney: 2.2,
-  burj: 2.4,
-  giza: 2,
-  fuji: 1.9,
-  wall: 1
+  nyc: 4.4,
+  eiffel: 2.9,
+  bigben: 2.9,
+  colosseum: 2.9,
+  taj: 2.9,
+  sydney: 3.0,
+  burj: 3.3,
+  giza: 2.7,
+  fuji: 2.4,
+  cali: 3.2,
+  wall: 1.2
 };
 
 export function landmarkScale(id: string): number {
@@ -364,6 +365,57 @@ function city(B: Bricks, s: CityStyle, seed: number): void {
   }
 }
 
+/**
+ * A dense outer belt of mid-rise blocks, ring roads and parks that fills the
+ * flattened pad from the downtown core out to the edge, so a landmark never
+ * sits on a lonely patch of empty lawn.
+ */
+function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: number): void {
+  // Concentric ring roads.
+  for (let r = rInner + 18; r < rOuter; r += 62) {
+    const seg = Math.max(28, Math.floor(r / 5));
+    for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      B.add(Math.cos(a) * r, 0, Math.sin(a) * r, 8, 0.8, 8, 0x3a3f46, { ry: -a });
+    }
+  }
+
+  // Building blocks on a polar grid, taller toward the centre.
+  let n = 0;
+  for (let r = rInner + 22; r < rOuter - 8; r += 30) {
+    const count = Math.max(8, Math.floor((2 * Math.PI * r) / 40));
+    for (let i = 0; i < count; i++) {
+      const a = ((i + (Math.round(r) % 2 ? 0.5 : 0)) / count) * Math.PI * 2;
+      // keep the four cardinal avenues open
+      if (Math.min(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) < 0.06) continue;
+      const jr = r + (hash2(seed + n, 3) - 0.5) * 16;
+      const x = Math.cos(a) * jr;
+      const z = Math.sin(a) * jr;
+      const t = 1 - (r - rInner) / Math.max(1, rOuter - rInner);
+      const h1 = hash2(seed + n * 13, 7);
+      const w = 9 + h1 * 7;
+      const height = 6 + t * 24 + h1 * 10;
+      B.add(x, 0, z, w + 3, 1.2, w + 3, 0xc4c9cf, { ry: -a });
+      B.add(x, 1, z, w, height, w, s.walls[n % s.walls.length], { ry: -a, studs: true });
+      B.add(x, 1 + height, z, w + 1.2, 1.6, w + 1.2, s.roofs[n % s.roofs.length], { ry: -a });
+      for (let y = 5; y < height - 3; y += 5) {
+        B.add(x, 1 + y, z, w + 0.4, 0.8, w + 0.4, s.band, { ry: -a, glow: true });
+      }
+      n++;
+    }
+  }
+
+  // Pocket parks so the belt isn't wall-to-wall concrete.
+  for (let i = 0; i < 34; i++) {
+    const a = hash2(seed + i * 5, 21) * Math.PI * 2;
+    const r = rInner + hash2(i, seed + 3) * (rOuter - rInner);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    B.add(x, 1, z, 1.1, 3, 1.1, 0x8a6743);
+    B.add(x, 4, z, 4.2, 4.2, 4.2, i % 2 ? 0x2e7d1e : 0x3fa021);
+  }
+}
+
 /* ---------------------------------------------------------------- builders */
 
 function eiffel(B: Bricks): void {
@@ -397,10 +449,8 @@ function nyc(B: Bricks): void {
   const greys = [0x9aa2ab, 0x7f8790, 0xb0b6bd, 0x89929b, 0x848c95, 0xa7adb4];
   const win = 0xf7d354;
 
-  // Broad Manhattan street plate with paler avenue stripes
-  B.add(0, 0, 0, 200, 3, 300, 0x6a707a);
-  for (let ax = -80; ax <= 80; ax += 40) B.add(ax, 3.1, 0, 6, 0.3, 300, 0x565b63);
-  for (let az = -120; az <= 120; az += 40) B.add(0, 3.1, az, 200, 0.3, 6, 0x565b63);
+  // Broad Manhattan street plate covering the full borough footprint
+  B.add(0, 0, 20, 460, 3, 500, 0x6a707a);
 
   // Central Park up north
   B.add(0, 3, -125, 120, 2.5, 60, 0x3fa021, { studs: true });
@@ -420,21 +470,26 @@ function nyc(B: Bricks): void {
     B.add(t.x, 3 + t.h, t.z, t.w * 0.5, 8, t.w * 0.5, greys[(i + 3) % greys.length]);
   });
 
-  // Outer filler blocks so the skyline has depth around the canyon
+  // Outer filler blocks so the skyline has depth and the boroughs sprawl wide
   let bi = 0;
-  for (let gx = -3; gx <= 3; gx++) {
-    for (let gz = -2; gz <= 3; gz++) {
+  for (let gx = -6; gx <= 6; gx++) {
+    for (let gz = -5; gz <= 6; gz++) {
       if (Math.abs(gx) < 2 && gz >= -1 && gz <= 1) continue; // leave the canyon clear
       const x = gx * 34;
       const z = gz * 40 - 10;
+      const edge = Math.max(Math.abs(gx) / 6, Math.abs(gz - 0.5) / 5.5);
       const r = hash2(gx * 7 + 31, gz * 13 + 5);
-      const w = 18 + r * 10;
-      const h = 40 + r * 70;
+      const w = 16 + r * 10;
+      // Taller downtown, shorter as the grid reaches the boroughs.
+      const h = (34 + r * 66) * (1 - edge * 0.6);
       B.add(x, 3, z, w, h, w, greys[bi % greys.length], { studs: true });
       for (let y = 14; y < h - 8; y += 14) B.add(x, 3 + y, z, w + 0.8, 1.1, w + 0.8, win, { glow: true });
       bi++;
     }
   }
+  // Street grid filling the wider footprint.
+  for (let ax = -200; ax <= 200; ax += 34) B.add(ax, 2.6, 20, 6, 0.4, 460, 0x565b63);
+  for (let az = -210; az <= 250; az += 40) B.add(0, 2.6, az, 440, 0.4, 6, 0x565b63);
 
   // Empire State Building (east of the square)
   B.add(74, 3, 20, 30, 78, 30, 0xaab1b9, { studs: true });
@@ -651,6 +706,142 @@ function burj(B: Bricks): void {
   B.add(0, 142, 0, 1.4, 16, 1.4, light);
 }
 
+/** A leaning palm: brown trunk plus a burst of green fronds. */
+function palm(B: Bricks, x: number, z: number, seed: number): void {
+  const lean = (hash2(seed, 4) - 0.5) * 2.4;
+  const h = 12 + hash2(seed, 9) * 6;
+  for (let y = 0; y < h; y += 3) {
+    B.add(x + (y / h) * lean, 3 + y, z, 1.8, 3, 1.8, y % 6 ? 0x9c7238 : 0x8a6330);
+  }
+  const tx = x + lean;
+  const ty = 3 + h;
+  for (const [dx, dz] of [[-4, 0], [4, 0], [0, -4], [0, 4], [-3, -3], [3, 3]] as const) {
+    B.add(tx + dx, ty, z + dz, 6, 1.2, 4, 0x2f9e3a);
+  }
+  B.add(tx, ty + 1, z, 3, 2, 3, 0x3fb84a);
+}
+
+/** A vertical Ferris wheel of cabins, spokes and a support A-frame. */
+function ferrisWheel(B: Bricks, cx: number, cz: number): void {
+  const R = 34;
+  const hubY = 3 + R + 6;
+  const spokes = 16;
+  const cabinCols = [0xd6382c, 0x2c6bd6, 0xf7d354, 0x4cb227, 0x9d5cff, 0xff2e88];
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2;
+    const x = cx + Math.cos(a) * R;
+    const y = hubY + Math.sin(a) * R;
+    // spoke
+    for (let t = 0.15; t < 1; t += 0.16) {
+      B.add(cx + Math.cos(a) * R * t, hubY + Math.sin(a) * R * t, cz, 1.2, 1.2, 1.2, 0xdfe6ec);
+    }
+    // cabin
+    B.add(x, y - 2.4, cz, 5, 4.5, 5, cabinCols[i % cabinCols.length], { studs: true });
+  }
+  // hub + rim caps
+  B.add(cx, hubY, cz, 5, 5, 6, 0xb7c0c8);
+  // support A-frame legs
+  for (const s of [-1, 1]) {
+    for (let y = 0; y < hubY - 2; y += 5) {
+      const lx = cx + s * (1 - y / hubY) * (R * 0.7);
+      B.add(lx, 3 + y, cz, 2.4, 5, 2.4, 0xc2c8cf);
+    }
+  }
+}
+
+/** Santa-Monica-style beach: sand, surf, a pier with a Ferris wheel, palms,
+ *  umbrellas and lifeguard towers, with a low beachfront town behind. */
+function caliBeach(B: Bricks): void {
+  const sand = 0xecd48c;
+  const sandDark = 0xdcc074;
+  const sea = 0x2f8fd4;
+  const seaLight = 0x69b6e8;
+  const deck = 0xb98a4a;
+  const deckDark = 0x9c7238;
+
+  // Beach sand behind the water.
+  B.add(0, 0, 55, 340, 3, 190, sand);
+  for (let i = 0; i < 24; i++) {
+    const x = (hash2(i, 2) - 0.5) * 320;
+    const z = 55 + (hash2(i, 5) - 0.5) * 160;
+    B.add(x, 3, z, 16, 0.3, 16, sandDark);
+  }
+
+  // Ocean out front (toward -Z) with foam lines.
+  B.add(0, 0, -150, 380, 2.6, 210, sea);
+  for (let i = 0; i < 34; i++) {
+    const x = (hash2(i, 7) - 0.5) * 360;
+    const z = -150 + (hash2(i, 11) - 0.5) * 180;
+    B.add(x, 2.6, z, 22, 0.3, 4, seaLight);
+  }
+
+  // Pier deck on pilings, reaching out over the water.
+  const pierZ1 = -150;
+  const pierW = 28;
+  for (let z = -6; z >= pierZ1; z -= 10) {
+    B.add(0, 3, z, pierW, 2, 10, (Math.round(z) / 10) % 2 ? deck : deckDark, { studs: true });
+    B.add(-pierW / 2 + 2, -6, z, 2.4, 12, 2.4, 0x6f5330);
+    B.add(pierW / 2 - 2, -6, z, 2.4, 12, 2.4, 0x6f5330);
+    B.add(-pierW / 2, 5, z, 0.8, 3, 8, 0xf0ead8);
+    B.add(pierW / 2, 5, z, 0.8, 3, 8, 0xf0ead8);
+  }
+
+  // Ferris wheel and a little arcade at the pier's end.
+  ferrisWheel(B, 0, pierZ1 + 20);
+  B.add(0, 3, pierZ1 + 52, 22, 12, 16, 0xd5202b, { studs: true });
+  B.add(0, 15, pierZ1 + 52, 23, 2, 17, 0xf4f4f2);
+  B.add(0, 3, pierZ1 + 60, 8, 7, 1, 0x9fd8ff, { glow: true });
+
+  // Palms lining the top of the beach.
+  for (let i = 0; i < 12; i++) {
+    palm(B, -150 + i * 27 + (hash2(i, 3) - 0.5) * 8, 120 + (hash2(i, 8) - 0.5) * 20, i * 5 + 1);
+  }
+
+  // Beach umbrellas and towels dotted on the sand.
+  const brellas = [0xff5a3c, 0x2c6bd6, 0xf7d354, 0x4cb227, 0xff2e88, 0xf4f4f2];
+  for (let i = 0; i < 26; i++) {
+    const x = (hash2(i, 21) - 0.5) * 280;
+    const z = 60 + hash2(i, 23) * 120;
+    B.add(x, 3, z, 5, 0.4, 3, brellas[(i + 2) % brellas.length]); // towel
+    B.add(x + 3, 3, z, 0.5, 5, 0.5, 0xdddddd); // pole
+    B.add(x + 3, 8, z, 9, 1.4, 9, brellas[i % brellas.length]); // canopy
+  }
+
+  // Lifeguard towers.
+  for (const lx of [-90, 70]) {
+    B.add(lx, 3, 90, 8, 7, 8, 0xdfe6ec);
+    B.add(lx, 10, 90, 10, 5, 10, 0xff6a3c, { studs: true });
+    B.add(lx, 3, 82, 3, 7, 1, 0x8a6743); // ramp post
+  }
+
+  // Low beachfront town set back from the sand.
+  const townWalls = [0xf3c1d6, 0xbfe3ff, 0xfff0c2, 0xd7f0d5, 0xe8d5ff];
+  const townRoofs = [0xd5202b, 0x2c6bd6, 0xf2a10a, 0x18a558];
+  for (let i = 0; i < 18; i++) {
+    const x = -170 + i * 20;
+    const z = 160 + (hash2(i, 31) - 0.5) * 10;
+    const w = 12 + hash2(i, 33) * 4;
+    const h = 10 + hash2(i, 35) * 14;
+    B.add(x, 0, z, w + 2, 1.2, w + 2, 0xd8d2c4);
+    B.add(x, 1, z, w, h, w, townWalls[i % townWalls.length], { studs: true });
+    B.add(x, 1 + h, z, w + 1.2, 1.6, w + 1.2, townRoofs[i % townRoofs.length]);
+    B.add(x, 4, z - w / 2 - 0.2, 3, 3, 1, 0x9fd8ff, { glow: true });
+  }
+  // Coast road along the town front.
+  B.add(0, 0, 142, 380, 0.9, 12, 0x3e434b);
+
+  // A second row of town buildings further inland so the land side isn't bare.
+  for (let i = 0; i < 16; i++) {
+    const x = -150 + i * 20 + (hash2(i, 41) - 0.5) * 8;
+    const z = 185 + (hash2(i, 43) - 0.5) * 16;
+    const w = 12 + hash2(i, 45) * 5;
+    const h = 12 + hash2(i, 47) * 18;
+    B.add(x, 0, z, w + 2, 1.2, w + 2, 0xd8d2c4);
+    B.add(x, 1, z, w, h, w, townWalls[(i + 2) % townWalls.length], { studs: true });
+    B.add(x, 1 + h, z, w + 1.2, 1.6, w + 1.2, townRoofs[(i + 1) % townRoofs.length]);
+  }
+}
+
 function greatWall(B: Bricks, terrain: Terrain, anchorDir: THREE.Vector3, anchorH: number): void {
   const east = new THREE.Vector3();
   const north = new THREE.Vector3();
@@ -740,10 +931,19 @@ export class LandmarkManager {
         case 'giza': giza(B); break;
         case 'bigben': bigben(B); break;
         case 'burj': burj(B); break;
+        case 'cali': caliBeach(B); break;
       }
 
       const cfg = CITY_CONFIGS[def.id];
-      if (cfg?.style) city(B, cfg.style, Math.abs(def.lat * 7 + def.lon));
+      const seed = Math.abs(def.lat * 7 + def.lon);
+      if (cfg?.style) city(B, cfg.style, seed);
+      // Fill the flat pad out to its edge with a mid-rise belt so the landmark
+      // isn't marooned on empty lawn. Skip the mountain and the wall.
+      if (cfg?.style && def.flat && def.id !== 'fuji') {
+        const rInner = cfg.style.rings[cfg.style.rings.length - 1] + 14;
+        const rOuter = (def.flat / S) * 0.9;
+        if (rOuter > rInner + 40) suburbs(B, cfg.style, seed + 91, rInner, rOuter);
+      }
 
       const group = B.build();
       if (def.id === 'nyc') {
