@@ -9,6 +9,28 @@ import { bus } from './bus';
 
 const DISCOVERED_KEY = 'brickfly.discovered';
 
+/**
+ * How much bigger than authored each landmark is rendered, to reach a more
+ * real-life sense of scale. The brick builder compensates sphere curvature for
+ * this factor and the city frames (cars/people) scale to match.
+ */
+export const LANDMARK_SCALE: Record<string, number> = {
+  nyc: 3.2,
+  eiffel: 2.1,
+  bigben: 2.1,
+  colosseum: 2.1,
+  taj: 2.1,
+  sydney: 2.2,
+  burj: 2.4,
+  giza: 2,
+  fuji: 1.9,
+  wall: 1
+};
+
+export function landmarkScale(id: string): number {
+  return LANDMARK_SCALE[id] ?? 1.8;
+}
+
 interface BrickSpec {
   x: number;
   y: number;
@@ -32,6 +54,9 @@ const glowMat = new THREE.MeshBasicMaterial();
 /** Collects axis-aligned (plus Y-rotated) bricks in a local tangent frame. */
 class Bricks {
   list: BrickSpec[] = [];
+  /** Group scale this brickset will be rendered at, so the sphere-curvature
+   *  compensation is applied for the final world size, not the local size. */
+  curveScale = 1;
 
   add(
     x: number,
@@ -45,7 +70,7 @@ class Bricks {
   ): void {
     this.list.push({
       x,
-      y: y - curvatureDrop(x, z),
+      y: y - curvatureDrop(x, z) * this.curveScale,
       z,
       w,
       h,
@@ -700,7 +725,9 @@ export class LandmarkManager {
     for (const def of LANDMARKS) {
       const dir = latLonToDir(def.lat * DEG2RAD, def.lon * DEG2RAD);
       const anchorH = Math.max(this.terrain.height(dir), 1);
+      const S = landmarkScale(def.id);
       const B = new Bricks();
+      B.curveScale = S;
 
       switch (def.id) {
         case 'eiffel': eiffel(B); break;
@@ -721,11 +748,12 @@ export class LandmarkManager {
       const group = B.build();
       if (def.id === 'nyc') {
         // Attach the animated Times Square billboards as children so they ride
-        // the group's placement on the globe.
+        // the group's placement (and scale) on the globe.
         const screens = createAdScreens(NYC_AD_TOWERS);
         for (const o of screens.objects) group.add(o);
         this.ads.push(screens);
       }
+      group.scale.setScalar(S);
       // Snap the base onto the top of the quantized voxel terrain so
       // monuments sit flush on the bricks instead of sinking into them.
       const baseR = PLANET_R + Math.ceil(Math.max(anchorH, 1) / BRICK_H) * BRICK_H + 0.2;
@@ -741,9 +769,9 @@ export class LandmarkManager {
           up: dir.clone(),
           east: east.clone(),
           north: north.clone(),
-          ring: cfg.frame.ring,
-          plaza: cfg.frame.plaza,
-          groundY: cfg.frame.groundY
+          ring: cfg.frame.ring * S,
+          plaza: cfg.frame.plaza * S,
+          groundY: cfg.frame.groundY * S
         });
       }
 

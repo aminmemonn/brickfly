@@ -12,7 +12,7 @@ import { Flight, Input } from './flight';
 import { CameraRig, CameraMode } from './camera';
 import { Contrail } from './contrail';
 import { Explosion } from './explosion';
-import { LandmarkManager } from './landmarks';
+import { LandmarkManager, landmarkScale } from './landmarks';
 import { AudioManager, RADIO_STATIONS } from './audio';
 import { Ambient } from './ambient';
 import { SkyLife } from './skylife';
@@ -195,7 +195,12 @@ export class Game {
     const at = new URLSearchParams(window.location.search).get('at');
     if (at) {
       const def = LANDMARKS.find((lm) => lm.id === at);
-      if (def) this.flight.reset(def.lat, def.lon - 2.2, 90, 150);
+      if (def) {
+        // Arrive proportionally farther out and higher for bigger landmarks so
+        // the whole skyline is in view instead of spawning inside it.
+        const s = landmarkScale(def.id);
+        this.flight.reset(def.lat, def.lon - 2.0 * s, 90, 150 + 120 * s);
+      }
     }
     this.mode = 'playing';
     this.rig.beginTransition();

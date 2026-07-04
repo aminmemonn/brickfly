@@ -4,6 +4,71 @@ import { clamp, lerp, smoothstep } from './util';
 
 const SKY_RADIUS = 12000;
 
+// Fixed sky direction for the Andromeda galaxy.
+const GALAXY_DIR = new THREE.Vector3(-0.55, 0.5, -0.67).normalize();
+
+/**
+ * Paint a soft spiral galaxy: a bright core, a couple of sweeping arms, and a
+ * dusting of stars, on a transparent canvas so it reads as a glowing patch of
+ * sky rather than a hard disc.
+ */
+function galaxyTexture(): THREE.CanvasTexture {
+  const S = 512;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d')!;
+  const cx = S / 2;
+  const cy = S / 2;
+
+  // Faint elliptical halo.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1, 0.5);
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 0.48);
+  halo.addColorStop(0, 'rgba(214, 226, 255, 0.85)');
+  halo.addColorStop(0.28, 'rgba(150, 170, 255, 0.45)');
+  halo.addColorStop(0.6, 'rgba(120, 110, 210, 0.16)');
+  halo.addColorStop(1, 'rgba(90, 80, 160, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, S * 0.48, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Spiral arms drawn as fading star specks along logarithmic curves.
+  for (let arm = 0; arm < 2; arm++) {
+    const base = arm * Math.PI;
+    for (let i = 0; i < 900; i++) {
+      const t = i / 900;
+      const ang = base + t * Math.PI * 3.2;
+      const rad = t * S * 0.46;
+      const jitter = (Math.random() - 0.5) * rad * 0.16;
+      const x = cx + Math.cos(ang) * (rad + jitter);
+      const y = cy + Math.sin(ang) * (rad + jitter) * 0.5;
+      const a = (1 - t) * 0.7 * Math.random();
+      const shade = 200 + Math.floor(Math.random() * 55);
+      ctx.fillStyle = `rgba(${shade}, ${shade}, 255, ${a})`;
+      const sz = Math.random() * 1.8 + 0.4;
+      ctx.fillRect(x, y, sz, sz);
+    }
+  }
+
+  // Bright core.
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, S * 0.12);
+  core.addColorStop(0, 'rgba(255, 252, 240, 0.95)');
+  core.addColorStop(0.5, 'rgba(255, 236, 200, 0.5)');
+  core.addColorStop(1, 'rgba(255, 220, 180, 0)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(cx, cy, S * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.center.set(0.5, 0.5);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 const VERT = /* glsl */ `
 varying vec3 vDir;
 void main() {
@@ -64,6 +129,8 @@ export class Sky {
   private moonMat: THREE.MeshBasicMaterial;
   private moonGlow: THREE.Mesh;
   private moonGlowMat: THREE.MeshBasicMaterial;
+  private galaxy: THREE.Mesh;
+  private galaxyMat: THREE.MeshBasicMaterial;
   private time = 4;
 
   constructor() {
@@ -110,27 +177,29 @@ export class Sky {
     };
 
     this.starsFarMat = new THREE.PointsMaterial({
-      color: 0xcdd8ff,
-      size: 2,
+      color: 0xeef2ff,
+      size: 3.2,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
-      depthWrite: false
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
     });
-    this.starsFar = new THREE.Points(makeStars(2200, 0.97, false), this.starsFarMat);
+    this.starsFar = new THREE.Points(makeStars(3400, 0.97, false), this.starsFarMat);
     this.starsFar.frustumCulled = false;
     this.starsFar.renderOrder = -9;
     this.group.add(this.starsFar);
 
     this.starsMat = new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 4.2,
+      size: 6.5,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
-      depthWrite: false
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
     });
-    this.stars = new THREE.Points(makeStars(900, 0.95, true), this.starsMat);
+    this.stars = new THREE.Points(makeStars(1500, 0.95, true), this.starsMat);
     this.stars.frustumCulled = false;
     this.stars.renderOrder = -9;
     this.group.add(this.stars);
@@ -154,6 +223,24 @@ export class Sky {
     this.moonGlow.frustumCulled = false;
     this.moonGlow.renderOrder = -8;
     this.group.add(this.moonGlow);
+
+    // Andromeda: a large glowing spiral fixed high in the night sky.
+    this.galaxyMat = new THREE.MeshBasicMaterial({
+      map: galaxyTexture(),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      fog: false
+    });
+    const galaxySize = SKY_RADIUS * 1.5;
+    this.galaxy = new THREE.Mesh(new THREE.PlaneGeometry(galaxySize, galaxySize), this.galaxyMat);
+    this.galaxy.position.copy(GALAXY_DIR).multiplyScalar(SKY_RADIUS * 0.92);
+    this.galaxy.lookAt(0, 0, 0);
+    this.galaxy.frustumCulled = false;
+    this.galaxy.renderOrder = -9;
+    this.group.add(this.galaxy);
   }
 
   update(dt: number, camPos: THREE.Vector3, playerUp: THREE.Vector3): void {
@@ -172,8 +259,13 @@ export class Sky {
     this.uniforms.uDay.value = this.dayMix;
     this.uniforms.uGolden.value = this.golden;
     const night = clamp(1 - this.dayMix * 1.6, 0, 1);
-    this.starsFarMat.opacity = night * 0.85;
-    this.starsMat.opacity = night;
+    // Stars ramp in strongly and early so dusk skies already sparkle.
+    const starGlow = Math.pow(night, 0.6);
+    this.starsFarMat.opacity = starGlow * 0.95;
+    this.starsMat.opacity = starGlow;
+    this.galaxyMat.opacity = starGlow * 0.9;
+    const gmap = this.galaxyMat.map;
+    if (gmap) gmap.rotation = this.time * 0.02;
 
     // Moon rides opposite the sun so it climbs as the sun sets.
     this.moon.position.copy(this.sunDir).multiplyScalar(-SKY_RADIUS * 0.9);

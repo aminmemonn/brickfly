@@ -22,6 +22,9 @@ const SKIN = 0xf5c542;
 
 const CARS_PER_CITY = 16;
 const PEOPLE_PER_CITY = 34;
+// Cars and citizens are drawn larger than life so they stay visible from the
+// air now that the cities themselves are rendered at a much bigger scale.
+const LIFE_SCALE = 2.2;
 
 interface Car {
   frame: CityFrame;
@@ -154,16 +157,16 @@ export class CityLife {
       qYaw.setFromAxisAngle(Y_AXIS, -Math.atan2(dz, dx));
       qFinal.copy(car.cityQuat).multiply(qYaw);
 
-      const ly = car.frame.groundY + 1.1;
+      const ly = car.frame.groundY + 1.1 * LIFE_SCALE;
       vPos.copy(car.frame.origin)
         .addScaledVector(car.frame.east, lx)
         .addScaledVector(car.frame.north, lz)
         .addScaledVector(car.frame.up, ly);
-      mTmp.compose(vPos, qFinal, sTmp.set(5.5, 1.7, 2.8));
+      mTmp.compose(vPos, qFinal, sTmp.set(5.5, 1.7, 2.8).multiplyScalar(LIFE_SCALE));
       this.carBody.setMatrixAt(i, mTmp);
 
-      vPos.addScaledVector(car.frame.up, 1.5);
-      mTmp.compose(vPos, qFinal, sTmp.set(3.1, 1.3, 2.4));
+      vPos.addScaledVector(car.frame.up, 1.5 * LIFE_SCALE);
+      mTmp.compose(vPos, qFinal, sTmp.set(3.1, 1.3, 2.4).multiplyScalar(LIFE_SCALE));
       this.carTop.setMatrixAt(i, mTmp);
     });
 
@@ -174,7 +177,7 @@ export class CityLife {
       const lz = p.az + (p.bz - p.az) * u;
       const dirSign = wave < 1 ? 1 : -1;
       const heading = -Math.atan2((p.bz - p.az) * dirSign, (p.bx - p.ax) * dirSign);
-      const bob = Math.abs(Math.sin(elapsed * 5 + p.phase)) * 0.2;
+      const bob = Math.abs(Math.sin(elapsed * 5 + p.phase)) * 0.2 * LIFE_SCALE;
 
       qYaw.setFromAxisAngle(Y_AXIS, heading);
       qFinal.copy(p.cityQuat).multiply(qYaw);
@@ -183,16 +186,16 @@ export class CityLife {
       vPos.copy(p.frame.origin)
         .addScaledVector(p.frame.east, lx)
         .addScaledVector(p.frame.north, lz)
-        .addScaledVector(p.frame.up, base + 0.65);
-      mTmp.compose(vPos, qFinal, sTmp.set(1.3, 1.3, 0.8));
+        .addScaledVector(p.frame.up, base + 0.65 * LIFE_SCALE);
+      mTmp.compose(vPos, qFinal, sTmp.set(1.3, 1.3, 0.8).multiplyScalar(LIFE_SCALE));
       this.legs.setMatrixAt(i, mTmp);
 
-      vPos.addScaledVector(p.frame.up, 1.25);
-      mTmp.compose(vPos, qFinal, sTmp.set(1.5, 1.25, 0.9));
+      vPos.addScaledVector(p.frame.up, 1.25 * LIFE_SCALE);
+      mTmp.compose(vPos, qFinal, sTmp.set(1.5, 1.25, 0.9).multiplyScalar(LIFE_SCALE));
       this.torso.setMatrixAt(i, mTmp);
 
-      vPos.addScaledVector(p.frame.up, 1.0);
-      mTmp.compose(vPos, qFinal, sTmp.set(1, 1, 1));
+      vPos.addScaledVector(p.frame.up, 1.0 * LIFE_SCALE);
+      mTmp.compose(vPos, qFinal, sTmp.set(1, 1, 1).multiplyScalar(LIFE_SCALE));
       this.head.setMatrixAt(i, mTmp);
     });
 
