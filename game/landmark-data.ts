@@ -33,11 +33,13 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: -74.006,
     fact: 'A full brick Manhattan — colourful glass and brick towers, Central Park, rivers and a blazing Times Square.',
     radius: 4400,
-    // Manhattan sits in an ocean harbor: the pad is flattened BELOW sea level so
-    // the global ocean sphere (game/water.ts) fills it cleanly, and the brick
-    // island rises out of the water. flat gives a ring of open water around it.
+    // Manhattan sits in an ocean harbor: the pad is flattened well BELOW sea
+    // level so the global ocean sphere (game/water.ts) fills it as proper blue
+    // water (deeper = bluer), and the brick island rises out of it. The water
+    // SURFACE stays at sea level, so this only sets the harbor's colour/depth,
+    // not the island height. flat gives a ring of open water around the island.
     flat: 3800,
-    plateau: -6
+    plateau: -24
   },
   {
     id: 'cali',
