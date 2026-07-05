@@ -280,6 +280,36 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
   nyc: { frame: { ring: 130, plaza: 170, groundY: 3 } }
 };
 
+/**
+ * A large flat ground area tiled into many small bricks. A single huge brick
+ * would stay flat and lift off the curved planet at its edges (by roughly
+ * halfWidth²/2R), reading as a tilted slab; tiling lets each piece drop onto
+ * the sphere so the surface stays flush.
+ */
+function plate(
+  B: Bricks,
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  y: number,
+  h: number,
+  color: number,
+  tile = 110
+): void {
+  const nx = Math.max(1, Math.ceil(w / tile));
+  const nz = Math.max(1, Math.ceil(d / tile));
+  const tw = w / nx;
+  const td = d / nz;
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      const x = cx - w / 2 + (i + 0.5) * tw;
+      const z = cz - d / 2 + (j + 0.5) * td;
+      B.add(x, y, z, tw + 0.6, h, td + 0.6, color);
+    }
+  }
+}
+
 /** Generic brick city district: plaza, roads, housing rings, trees, lamps. */
 function city(B: Bricks, s: CityStyle, seed: number): void {
   if (s.plaza > 0) {
@@ -468,8 +498,10 @@ function nyc(B: Bricks): void {
   const HZ = 780;
 
   // Hudson + East rivers filling the pad, with the island asphalt on top.
-  B.add(0, -2, 0, 1650, 2.4, 1750, 0x2f6fae);
-  B.add(0, 0, 0, HX * 2 + 24, 3, HZ * 2 + 24, asphalt);
+  // Tiled so the huge ground area follows the planet's curve instead of
+  // lifting off as one flat slab.
+  plate(B, 0, -20, 1650, 1750, -2, 2.4, 0x2f6fae, 120);
+  plate(B, 0, 0, HX * 2 + 24, HZ * 2 + 24, 0, 3, asphalt, 110);
   // Waterfront piers along both rivers.
   for (let z = -HZ + 80; z < HZ; z += 150) {
     for (const s of [-1, 1]) {
@@ -478,8 +510,13 @@ function nyc(B: Bricks): void {
   }
 
   const AVENUES = [-180, -120, -60, 0, 60, 120, 180];
-  for (const ax of AVENUES) B.add(ax, 3.2, 0, 8, 0.4, HZ * 2, stripe);
-  for (let z = -HZ; z <= HZ; z += 44) B.add(0, 3.2, z, HX * 2, 0.4, 8, stripe);
+  // Street stripes segmented so they hug the curve rather than arch off it.
+  for (const ax of AVENUES) {
+    for (let z = -HZ; z < HZ; z += 110) B.add(ax, 3.2, z + 55, 8, 0.4, 112, stripe);
+  }
+  for (let z = -HZ; z <= HZ; z += 44) {
+    for (let x = -HX; x < HX; x += 110) B.add(x + 55, 3.2, z, 112, 0.4, 8, stripe);
+  }
 
   // Central Park: a long green rectangle with a pond and trees.
   const parkZ0 = -600;
@@ -706,8 +743,8 @@ function giza(B: Bricks): void {
   const sand = 0xe3cf9e;
   const sandDark = 0xd7bf85;
 
-  // Wide desert plaza.
-  B.add(0, 0, 0, 520, 2, 520, sand);
+  // Wide desert plaza (tiled to follow the planet's curve).
+  plate(B, 0, 0, 520, 520, 0, 2, sand, 90);
   for (let i = 0; i < 40; i++) {
     B.add((hash2(i, 2) - 0.5) * 480, 2, (hash2(i, 6) - 0.5) * 480, 22, 0.3, 22, sandDark);
   }
@@ -896,20 +933,20 @@ function caliBeach(B: Bricks): void {
   // The pad is split into open ocean (seaward, -Z) and sand (shore, +Z), each
   // extending to the pad edge so the water reads as coast joined to the real
   // ocean rather than a lone blue diamond on the grass.
-  B.add(0, -1, -260, 960, 2.4, 470, sea);
+  plate(B, 0, -260, 960, 470, -1, 2.4, sea, 95);
   for (let i = 0; i < 40; i++) {
     const x = (hash2(i, 7) - 0.5) * 900;
     const z = -260 + (hash2(i, 11) - 0.5) * 440;
     B.add(x, 2.5, z, 26, 0.3, 4, seaLight); // foam lines
   }
-  B.add(0, 0, 220, 960, 3, 500, sand);
+  plate(B, 0, 220, 960, 500, 0, 3, sand, 95);
   for (let i = 0; i < 34; i++) {
     const x = (hash2(i, 2) - 0.5) * 900;
     const z = 55 + hash2(i, 5) * 380;
     B.add(x, 3, z, 20, 0.3, 20, sandDark);
   }
   // Wet-sand surf line where sea meets shore.
-  B.add(0, 2.6, -22, 960, 0.6, 44, seaLight);
+  plate(B, 0, -22, 960, 44, 2.6, 0.6, seaLight, 95);
 
   // Pier deck on pilings, reaching out over the water.
   const pierZ1 = -150;
