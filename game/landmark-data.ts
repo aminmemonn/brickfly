@@ -33,7 +33,9 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: -74.006,
     fact: 'A full brick Manhattan — colourful glass and brick towers, Central Park, rivers and a blazing Times Square.',
     radius: 4400,
-    flat: 3000,
+    // Fully-flat pad must cover the whole river plate (corners reach ~4090 world
+    // at scale 3.4) so natural terrain never pokes up through the flat water.
+    flat: 4600,
     plateau: 4
   },
   {
@@ -44,7 +46,9 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: -120.5,
     fact: 'Sun, surf and a brick pier with a Ferris wheel. The lifeguards never blink — they are made of bricks.',
     radius: 2600,
-    flat: 1500,
+    // Fully-flat pad covers the sea + sand plates (corners ~2345 world) so the
+    // ocean plate stays flush instead of getting pierced by natural terrain.
+    flat: 2800,
     plateau: 2
   },
   {
