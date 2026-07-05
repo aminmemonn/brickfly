@@ -33,9 +33,9 @@ export const LANDMARKS: LandmarkDef[] = [
     lon: -74.006,
     fact: 'A full brick Manhattan — colourful glass and brick towers, Central Park, rivers and a blazing Times Square.',
     radius: 4400,
-    // Fully-flat pad must cover the whole river plate (corners reach ~4090 world
-    // at scale 3.4) so natural terrain never pokes up through the flat water.
-    flat: 4600,
+    // Snug pad around the island; the surrounding water is the global ocean
+    // sphere (see game/water.ts), not a flat brick plate.
+    flat: 3000,
     plateau: 4
   },
   {

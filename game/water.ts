@@ -91,7 +91,11 @@ export class Water {
   };
 
   constructor(terrain: Terrain) {
-    const geo = new THREE.SphereGeometry(PLANET_R + 1, 256, 144);
+    // Match the globe's tessellation (512×320) exactly so every ocean vertex
+    // sits directly above a terrain vertex. A coarser water sphere left big flat
+    // facets straddling the finer coastline, poking up through land as tilted
+    // blue squares near the coasts (e.g. around NYC).
+    const geo = new THREE.SphereGeometry(PLANET_R + 1, 512, 320);
     const pos = geo.attributes.position;
     const depths = new Float32Array(pos.count);
     const dir = new THREE.Vector3();
