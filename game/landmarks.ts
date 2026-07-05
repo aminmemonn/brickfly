@@ -497,12 +497,11 @@ function nyc(B: Bricks): void {
   const HX = 210;
   const HZ = 780;
 
-  // Hudson + East rivers filling the pad, with the island asphalt on top.
-  // Tiled so the huge ground area follows the planet's curve instead of
-  // lifting off as one flat slab.
-  plate(B, 0, -20, 1650, 1750, -2, 2.4, 0x2f6fae, 120);
+  // Manhattan is an island: its pad is a sub-sea harbor filled by the global
+  // ocean sphere, so no brick water plate is needed. This asphalt slab is the
+  // island surface rising out of the water; tiled to follow the planet's curve.
   plate(B, 0, 0, HX * 2 + 24, HZ * 2 + 24, 0, 3, asphalt, 110);
-  // Waterfront piers along both rivers.
+  // Waterfront piers/docks around the island edge.
   for (let z = -HZ + 80; z < HZ; z += 150) {
     for (const s of [-1, 1]) {
       B.add(s * (HX + 20), 3, z, 40, 1.4, 14, 0x8a7250, { studs: true });

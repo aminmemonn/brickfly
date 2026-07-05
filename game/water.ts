@@ -106,7 +106,11 @@ export class Water {
     const dir = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
       dir.fromBufferAttribute(pos, i).normalize();
-      depths[i] = Math.min(1, Math.max(0.015, -terrain.rawHeight(dir) / 110));
+      // Use the FLATTENED height (not rawHeight) so the ocean's land/sea decision
+      // matches what the terrain mesh actually renders — including landmark pads
+      // like Manhattan's sub-sea harbor. Mismatching the two produced green
+      // terrain fingers stabbing into the water near the coast.
+      depths[i] = Math.min(1, Math.max(0.015, -terrain.height(dir) / 110));
     }
     geo.setAttribute('depth', new THREE.BufferAttribute(depths, 1));
 

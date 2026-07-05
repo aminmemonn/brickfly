@@ -69,8 +69,11 @@ export class Terrain {
       const r0 = lm.flat / PLANET_R;
       // Flatten the pad to the natural ground level here (never below the
       // authored minimum) so the monument sits flush with its surroundings
-      // instead of at the bottom of an artificial crater.
-      const plateau = Math.max(this.rawHeight(dir), lm.plateau ?? 10);
+      // instead of at the bottom of an artificial crater. A NEGATIVE authored
+      // plateau is an intentional harbor/moat below sea level (e.g. Manhattan as
+      // an island) — honor it directly so the ocean can fill the pad.
+      const authored = lm.plateau ?? 10;
+      const plateau = authored < 0 ? authored : Math.max(this.rawHeight(dir), authored);
       this.anchors.push({ dir, plateau, r0, r1: r0 * 2.2, cosPad: Math.cos(r0 * 1.15) });
     }
   }
