@@ -1117,6 +1117,23 @@ export class LandmarkManager {
     } catch {
       /* start with an empty collection */
     }
+    // Merge a collection pulled from the cloud (after sign-in) into the live game.
+    bus.on('import-collection', (ids) => {
+      let changed = false;
+      for (const id of (ids as string[]) ?? []) {
+        if (!this.discovered.has(id)) {
+          this.discovered.add(id);
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      try {
+        localStorage.setItem(DISCOVERED_KEY, JSON.stringify([...this.discovered]));
+      } catch {
+        /* ignore storage failures */
+      }
+      bus.emit('collection', [...this.discovered]);
+    });
   }
 
   build(): void {

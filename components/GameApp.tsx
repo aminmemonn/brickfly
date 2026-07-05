@@ -8,6 +8,8 @@ import LoadingScreen from './LoadingScreen';
 import MainMenu from './MainMenu';
 import HUD from './HUD';
 import SettingsPanel from './SettingsPanel';
+import AccountButton from './AccountButton';
+import CloudSync from './CloudSync';
 
 type Phase = 'boot' | 'menu' | 'playing' | 'paused';
 
@@ -146,6 +148,12 @@ export default function GameApp() {
       )}
 
       {phase === 'boot' && <LoadingScreen />}
+
+      {/* Cloud save runs in every phase; the account chip shows only in the menu
+          so it never overlaps the in-flight minimap. Both no-op until accounts
+          are configured. */}
+      <CloudSync />
+      {phase === 'menu' && <AccountButton />}
     </div>
   );
 }
