@@ -140,25 +140,51 @@ export class SeaLife {
         glass.position.set(0, 6.4, 2);
         obj.add(glass);
         const mast = new THREE.Mesh(box, mat(0xd7dde3));
-        mast.scale.set(0.8, 12, 0.8);
-        mast.position.set(0, 13, 6);
+        mast.scale.set(1, 18, 1);
+        mast.position.set(0, 16, 6);
         obj.add(mast);
-        // Side advert boards along the hull.
+        // Colourful sun-deck pads.
+        const padCols = [0xff5a3c, 0xf7d354, 0x2c6bd6, 0x18a558];
+        for (let p = 0; p < 4; p++) {
+          const pad = new THREE.Mesh(box, mat(padCols[p]));
+          pad.scale.set(3, 0.5, 3);
+          pad.position.set(-3 + (p % 2) * 6, 3.4, -13 + Math.floor(p / 2) * 6);
+          obj.add(pad);
+        }
+        // Rear helipad with an H.
+        const heli = new THREE.Mesh(box, mat(0x2a2f36));
+        heli.scale.set(9, 0.5, 9);
+        heli.position.set(0, 3.3, -19);
+        obj.add(heli);
+        const heliH = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0xf7d354 }));
+        heliH.scale.set(1.2, 0.6, 5);
+        heliH.position.set(0, 3.7, -19);
+        obj.add(heliH);
+        // Bunting pennants strung down from the mast.
+        const flagCols = [0xd6382c, 0xf7d354, 0x2c6bd6, 0x18a558, 0x9d5cff, 0xff2e88];
+        for (let f = 0; f < 6; f++) {
+          const flag = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: flagCols[f] }));
+          flag.scale.set(0.3, 2, 2.6);
+          flag.position.set(0, 23 - f * 2.6, 6 - f * 3);
+          obj.add(flag);
+        }
+        // Big side advert boards along the hull.
         const adTex = bannerTexture(YACHT_ADS[si % YACHT_ADS.length], YACHT_BG[si % YACHT_BG.length]);
         const adMat = new THREE.MeshBasicMaterial({ map: adTex, side: THREE.DoubleSide });
         for (const s of [1, -1]) {
-          const panel = new THREE.Mesh(new THREE.PlaneGeometry(40, 6.5), adMat);
-          panel.position.set(s * 6.2, 0.4, 4);
+          const panel = new THREE.Mesh(new THREE.PlaneGeometry(62, 9), adMat);
+          panel.position.set(s * 6.3, 0.6, 4);
           panel.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
           obj.add(panel);
         }
-        obj.scale.setScalar(2.2);
+        // Mega scale; hovers near the cluster centre so the jet-skis ring it.
+        obj.scale.setScalar(5.5);
         this.group.add(obj);
-        this.yachts.push({ obj, center: dir, east: e, north: n, orbitR: 220 + hash2(si, 83) * 260, alt: 3, speed: 0.02 + hash2(si, 84) * 0.02, phase: hash2(si, 85) * Math.PI * 2 });
+        this.yachts.push({ obj, center: dir, east: e, north: n, orbitR: 30 + hash2(si, 83) * 30, alt: 3, speed: 0.03 + hash2(si, 84) * 0.02, phase: hash2(si, 85) * Math.PI * 2 });
       }
 
       // --- Jet-skiers carving circles around the yacht ---
-      const skiN = 2 + Math.floor(hash2(si, 86) * 2);
+      const skiN = 4 + Math.floor(hash2(si, 86) * 3);
       for (let k = 0; k < skiN; k++) {
         const col = SKI_COLORS[(si + k) % SKI_COLORS.length];
         const obj = new THREE.Group();
@@ -182,9 +208,9 @@ export class SeaLife {
         head.scale.set(1.3, 1.3, 1.3);
         head.position.set(0, 4.1, 1.4);
         obj.add(head);
-        obj.scale.setScalar(2);
+        obj.scale.setScalar(3);
         this.group.add(obj);
-        this.skis.push({ obj, center: dir, east: e, north: n, orbitR: 60 + k * 34 + hash2(si + k, 87) * 30, alt: 2, speed: 0.22 + hash2(si + k, 88) * 0.12, phase: hash2(si * 3 + k, 89) * Math.PI * 2 });
+        this.skis.push({ obj, center: dir, east: e, north: n, orbitR: 95 + k * 26 + hash2(si + k, 87) * 20, alt: 2, speed: 0.24 + hash2(si + k, 88) * 0.14, phase: hash2(si * 3 + k, 89) * Math.PI * 2 });
       }
 
       // --- A pod of breaching dolphins ---

@@ -21,8 +21,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 48.858,
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
-    radius: 2800,
-    flat: 1600,
+    radius: 3400,
+    flat: 2100,
     plateau: 10
   },
   {
@@ -31,21 +31,21 @@ export const LANDMARKS: LandmarkDef[] = [
     location: 'Manhattan, USA',
     lat: 40.712,
     lon: -74.006,
-    fact: 'A skyline of stacked grey bricks with yellow window studs. Rush hour is still faster up here.',
-    radius: 3600,
-    flat: 2200,
-    plateau: 6
+    fact: 'A full brick Manhattan — colourful glass and brick towers, Central Park, rivers and a blazing Times Square.',
+    radius: 4400,
+    flat: 3000,
+    plateau: 4
   },
   {
     id: 'cali',
     name: 'California Beach',
     location: 'Santa Monica, USA',
-    lat: 36,
-    lon: -116,
+    lat: 34,
+    lon: -120.5,
     fact: 'Sun, surf and a brick pier with a Ferris wheel. The lifeguards never blink — they are made of bricks.',
-    radius: 2400,
-    flat: 1400,
-    plateau: 7
+    radius: 2600,
+    flat: 1500,
+    plateau: 2
   },
   {
     id: 'taj',
@@ -85,8 +85,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 41.89,
     lon: 12.492,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
-    radius: 2800,
-    flat: 1600,
+    radius: 3400,
+    flat: 2000,
     plateau: 10
   },
   {
@@ -118,8 +118,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 51.5,
     lon: -0.124,
     fact: 'The clock tower of Westminster in warm tan brick. It is always brick o’clock somewhere.',
-    radius: 2800,
-    flat: 1600,
+    radius: 3400,
+    flat: 2000,
     plateau: 8
   },
   {

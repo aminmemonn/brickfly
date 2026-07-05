@@ -8,7 +8,7 @@ import { hash2 } from './util';
  * colors. Near-field brick detail is layered on top by BrickField.
  */
 export function buildGlobe(terrain: Terrain): THREE.Mesh {
-  const base = new THREE.SphereGeometry(PLANET_R, 384, 240);
+  const base = new THREE.SphereGeometry(PLANET_R, 512, 320);
   const pos = base.attributes.position;
   const dir = new THREE.Vector3();
 
