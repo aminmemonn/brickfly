@@ -15,17 +15,17 @@ const DISCOVERED_KEY = 'brickfly.discovered';
  * this factor and the city frames (cars/people) scale to match.
  */
 export const LANDMARK_SCALE: Record<string, number> = {
-  nyc: 4.4,
-  eiffel: 2.9,
-  bigben: 2.9,
-  colosseum: 2.9,
-  taj: 2.9,
-  sydney: 3.0,
-  burj: 3.3,
-  giza: 2.7,
-  fuji: 2.4,
-  cali: 3.2,
-  wall: 1.2
+  nyc: 5.5,
+  eiffel: 6.5,
+  bigben: 6.0,
+  colosseum: 6.0,
+  taj: 6.0,
+  sydney: 6.0,
+  burj: 5.0,
+  giza: 4.5,
+  fuji: 3.4,
+  cali: 3.8,
+  wall: 1.6
 };
 
 export function landmarkScale(id: string): number {
@@ -264,19 +264,6 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
     },
     frame: { ring: 62, plaza: 42, groundY: 1.4 }
   },
-  giza: {
-    style: {
-      walls: [0xd9c49a, 0xcbb083],
-      roofs: [0xb89b6a],
-      band: 0xefe0c0,
-      floors: [4, 7],
-      plaza: 0,
-      road: 0,
-      rings: [128],
-      perRing: [9],
-      trees: 5
-    }
-  },
   fuji: {
     style: {
       walls: [0x6b4a35, 0x7a5741, 0xf4efe4],
@@ -380,10 +367,12 @@ function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: 
     }
   }
 
-  // Building blocks on a polar grid, taller toward the centre.
+  // Low-rise blocks on a polar grid, so the landmark towers over its town.
+  // Bright accent roofs keep the belt colourful rather than a grey slab.
+  const ACCENTS = [0xd6382c, 0x2c6bd6, 0xf2a10a, 0x18a558, 0x9d5cff, 0x2e9e9b, 0xff7a1a];
   let n = 0;
-  for (let r = rInner + 22; r < rOuter - 8; r += 30) {
-    const count = Math.max(8, Math.floor((2 * Math.PI * r) / 40));
+  for (let r = rInner + 22; r < rOuter - 8; r += 28) {
+    const count = Math.max(8, Math.floor((2 * Math.PI * r) / 38));
     for (let i = 0; i < count; i++) {
       const a = ((i + (Math.round(r) % 2 ? 0.5 : 0)) / count) * Math.PI * 2;
       // keep the four cardinal avenues open
@@ -391,14 +380,15 @@ function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: 
       const jr = r + (hash2(seed + n, 3) - 0.5) * 16;
       const x = Math.cos(a) * jr;
       const z = Math.sin(a) * jr;
-      const t = 1 - (r - rInner) / Math.max(1, rOuter - rInner);
       const h1 = hash2(seed + n * 13, 7);
-      const w = 9 + h1 * 7;
-      const height = 6 + t * 24 + h1 * 10;
+      const w = 8 + h1 * 6;
+      // Deliberately low (a few storeys) so it never competes with the monument.
+      const height = 5 + h1 * 9;
+      const roof = hash2(seed + n * 5, 23) > 0.55 ? ACCENTS[n % ACCENTS.length] : s.roofs[n % s.roofs.length];
       B.add(x, 0, z, w + 3, 1.2, w + 3, 0xc4c9cf, { ry: -a });
       B.add(x, 1, z, w, height, w, s.walls[n % s.walls.length], { ry: -a, studs: true });
-      B.add(x, 1 + height, z, w + 1.2, 1.6, w + 1.2, s.roofs[n % s.roofs.length], { ry: -a });
-      for (let y = 5; y < height - 3; y += 5) {
+      B.add(x, 1 + height, z, w + 1.2, 1.6, w + 1.2, roof, { ry: -a });
+      for (let y = 5; y < height - 2; y += 5) {
         B.add(x, 1 + y, z, w + 0.4, 0.8, w + 0.4, s.band, { ry: -a, glow: true });
       }
       n++;
@@ -443,6 +433,23 @@ function eiffel(B: Bricks): void {
   }
   B.add(0, 84, 0, 6.5, 2.5, 6.5, dark, { studs: true });
   B.add(0, 86.5, 0, 1.6, 10, 1.6, grey);
+
+  // Golden beacon and a French tricolour flying from the mast.
+  B.add(0, 92, 0, 2.2, 2.2, 2.2, 0xffd24a, { glow: true });
+  B.add(0, 96, 0, 0.8, 9, 0.8, 0xf4f4f2);
+  B.add(2.4, 100, 0, 2.6, 4.4, 0.4, 0x2c3e9e, { glow: true });
+  B.add(5, 100, 0, 2.6, 4.4, 0.4, 0xf4f4f2, { glow: true });
+  B.add(7.6, 100, 0, 2.6, 4.4, 0.4, 0xd5202b, { glow: true });
+
+  // Coloured platform up-lights for a festive night-time glow.
+  for (const yy of [16, 32]) {
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const w = 30 * Math.pow(1 - yy / 60, 1.75) + 3;
+        B.add((sx * (w + 6)) / 2, yy, (sz * (w + 6)) / 2, 1.4, 1.4, 1.4, sx * sz > 0 ? 0x38d0ff : 0xffd24a, { glow: true });
+      }
+    }
+  }
 }
 
 function nyc(B: Bricks): void {
@@ -629,23 +636,79 @@ function fuji(B: Bricks): void {
   B.add(0, 65, 0, 9, 2.6, 9, 0x5c5248);
 }
 
-function giza(B: Bricks): void {
-  const pyramid = (cx: number, cz: number, base: number) => {
-    const h = base * 0.63;
-    for (let y = 0; y < h; y += 4) {
-      const w = base * (1 - y / h) + 2;
-      const color = y > h - 9 ? 0xeed9a8 : (y / 4) % 2 ? 0xdcb56e : 0xcfa75f;
-      B.add(cx, y, cz, w, 4, w, color);
-    }
-  };
-  pyramid(-34, -20, 72);
-  pyramid(12, 8, 54);
-  pyramid(42, 36, 34);
+/** The Great Sphinx: a reclining lion body with a pharaoh's nemes headdress. */
+function sphinx(B: Bricks, cx: number, cz: number): void {
+  const stone = 0xd9b26a;
+  const stone2 = 0xcaa25c;
+  const gold = 0xd8b84a;
+  const blue = 0x2c6bd6;
+  // Body lies along +Z with the head/paws facing out toward -Z.
+  B.add(cx, 0, cz, 28, 20, 66, stone, { studs: true });
+  B.add(cx, 0, cz, 34, 6, 74, stone2); // plinth
+  for (const s of [-1, 1]) {
+    B.add(cx + s * 9, 0, cz - 44, 9, 9, 30, stone2); // outstretched paws
+    B.add(cx + s * 9, 0, cz - 58, 9, 5, 4, stone); // toes
+  }
+  B.add(cx, 20, cz - 20, 20, 16, 18, stone); // chest / neck
+  // Nemes headdress with striped lappets and a gold brow band.
+  B.add(cx, 34, cz - 24, 22, 18, 18, stone2); // head block
+  for (const s of [-1, 1]) {
+    B.add(cx + s * 10.5, 30, cz - 22, 4, 22, 18, blue);
+  }
+  B.add(cx, 44, cz - 22, 24, 4, 18, gold);
+  B.add(cx, 30, cz - 33.6, 14, 12, 1.6, 0xe6c07e); // face
+  B.add(cx, 22, cz - 33.6, 5, 3, 1.6, gold); // ceremonial beard
+}
 
-  // A tiny sphinx keeping watch
-  B.add(-2, 0, -44, 6, 5, 14, 0xd9b26a);
-  B.add(-2, 5, -49, 4.5, 4.5, 4, 0xe0bd78);
-  B.add(-2, 9.5, -49, 5.5, 1.4, 4.5, 0xc9a35f);
+function giza(B: Bricks): void {
+  const glyphCols = [0x2e9e9b, 0xd8b84a, 0xc0432f, 0x2c6bd6];
+  const sand = 0xe3cf9e;
+  const sandDark = 0xd7bf85;
+
+  // Wide desert plaza.
+  B.add(0, 0, 0, 520, 2, 520, sand);
+  for (let i = 0; i < 40; i++) {
+    B.add((hash2(i, 2) - 0.5) * 480, 2, (hash2(i, 6) - 0.5) * 480, 22, 0.3, 22, sandDark);
+  }
+
+  // Giant stepped pyramids, with hieroglyphic cartouches climbing the faces.
+  const pyramid = (cx: number, cz: number, base: number, glyphs: boolean) => {
+    const h = base * 0.68;
+    for (let y = 0; y < h; y += 4) {
+      const w = base * (1 - y / h) + 3;
+      const color = y > h - 12 ? 0xeed9a8 : (y / 4) % 2 ? 0xdcb56e : 0xcfa75f;
+      B.add(cx, y, cz, w, 4, w, color);
+      if (glyphs && (y / 4) % 2 === 0 && y > 6 && y < h - 16) {
+        B.add(cx, y + 1, cz + w / 2 + 0.4, 3.4, 2.6, 0.7, glyphCols[(y / 8) % glyphCols.length], { glow: true });
+      }
+    }
+    B.add(cx, h, cz, 6, 5, 6, 0xd8b84a); // gilded capstone
+  };
+  pyramid(-150, -70, 210, true);
+  pyramid(40, 50, 168, true);
+  pyramid(190, 160, 120, false);
+
+  // The Great Sphinx, out in front of the pyramids.
+  sphinx(B, -30, -210);
+
+  // A pair of glyph-carved obelisks flanking the approach.
+  for (const ox of [-210, 210]) {
+    for (let y = 0; y < 78; y += 5) {
+      const w = 9 * (1 - y / 110);
+      B.add(ox, y, -150, w, 5, w, (y / 5) % 2 ? 0xdcb56e : 0xcfa75f);
+    }
+    B.add(ox, 78, -150, 7, 9, 7, 0xd8b84a); // gold pyramidion
+    for (let y = 8; y < 66; y += 10) {
+      B.add(ox, y, -145.6, 3, 3.4, 0.7, glyphCols[(y / 10) % glyphCols.length], { glow: true });
+    }
+  }
+
+  // Palms dotted around the sacred site.
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const r = 230 + hash2(i, 12) * 30;
+    palm(B, Math.cos(a) * r, Math.sin(a) * r + 30, i * 3 + 2);
+  }
 }
 
 function bigben(B: Bricks): void {
@@ -671,6 +734,18 @@ function bigben(B: Bricks): void {
   B.add(30, 68.5, 0, 6, 3.5, 6, green);
   B.add(30, 72, 0, 2.6, 4, 2.6, green);
   B.add(30, 76, 0, 1.2, 6, 1.2, 0xd8b84a);
+
+  // Union Jack flying beside the spire.
+  B.add(30, 82, 0, 0.7, 8, 0.7, 0xf4f4f2);
+  B.add(33, 86, 0, 3.2, 4.2, 0.4, 0x1a3a8f, { glow: true });
+  B.add(33, 86, 0.06, 3.2, 1.2, 0.4, 0xd5202b, { glow: true });
+  B.add(33, 86, 0.06, 1.0, 4.2, 0.4, 0xd5202b, { glow: true });
+
+  // Gilded clock surrounds so the faces catch the eye.
+  for (const side of [-1, 1]) {
+    B.add(30 + side * 8.9, 55, 0, 0.5, 9, 9, 0xd8b84a);
+    B.add(30, 55, side * 8.9, 9, 9, 0.5, 0xd8b84a);
+  }
 
   // Westminster hall
   B.add(-10, 0, 0, 56, 14, 20, tan, { studs: true });
@@ -749,6 +824,24 @@ function ferrisWheel(B: Bricks, cx: number, cz: number): void {
   }
 }
 
+const BEACH_SHIRTS = [0xd6382c, 0x2c6bd6, 0xf7d354, 0x4cb227, 0x9d5cff, 0xff2e88, 0x2e9e9b];
+
+/** A little brick beach-goer standing on the sand. */
+function beachPerson(B: Bricks, x: number, z: number, seed: number): void {
+  const shirt = BEACH_SHIRTS[Math.floor(hash2(seed, 3) * BEACH_SHIRTS.length)];
+  B.add(x, 3, z, 1.2, 2.4, 0.9, 0x33363c);
+  B.add(x, 5.4, z, 1.6, 2.4, 1.1, shirt);
+  B.add(x, 7.8, z, 1.2, 1.2, 1.2, 0xf5c542);
+}
+
+/** A colourful cabana tent with an open front. */
+function cabana(B: Bricks, x: number, z: number, color: number): void {
+  B.add(x, 3, z, 11, 0.5, 11, 0xf0ead8);
+  B.add(x, 3, z, 9, 5, 9, color, { studs: true });
+  B.add(x, 8, z, 11, 2, 11, 0xf4f4f2);
+  B.add(x, 3.5, z - 4.6, 5, 4, 0.6, 0x9fd8ff, { glow: true });
+}
+
 /** Santa-Monica-style beach: sand, surf, a pier with a Ferris wheel, palms,
  *  umbrellas and lifeguard towers, with a low beachfront town behind. */
 function caliBeach(B: Bricks): void {
@@ -805,6 +898,44 @@ function caliBeach(B: Bricks): void {
     B.add(x, 3, z, 5, 0.4, 3, brellas[(i + 2) % brellas.length]); // towel
     B.add(x + 3, 3, z, 0.5, 5, 0.5, 0xdddddd); // pole
     B.add(x + 3, 8, z, 9, 1.4, 9, brellas[i % brellas.length]); // canopy
+  }
+
+  // Sunbathers and beach-goers dotted across the sand.
+  for (let i = 0; i < 40; i++) {
+    beachPerson(B, (hash2(i, 51) - 0.5) * 300, 55 + hash2(i, 53) * 120, i * 7 + 3);
+  }
+
+  // Colourful cabana tents.
+  const tentCols = [0xff5a3c, 0x2c6bd6, 0x18a558, 0xf7d354, 0x9d5cff];
+  for (let i = 0; i < 7; i++) {
+    cabana(B, -160 + i * 52, 70 + (hash2(i, 55) - 0.5) * 30, tentCols[i % tentCols.length]);
+  }
+
+  // Beach-volleyball net with players.
+  B.add(-40, 3, 100, 0.8, 10, 0.8, 0xf4f4f2);
+  B.add(-24, 3, 100, 0.8, 10, 0.8, 0xf4f4f2);
+  B.add(-32, 9, 100, 17, 3, 0.4, 0xf4f4f2);
+  beachPerson(B, -36, 90, 61);
+  beachPerson(B, -28, 112, 62);
+
+  // Surfers riding boards out in the water.
+  const boardCols = [0xff5a3c, 0xf7d354, 0x2c6bd6, 0x4cb227, 0x9d5cff];
+  for (let i = 0; i < 9; i++) {
+    const x = (hash2(i, 57) - 0.5) * 300;
+    const z = -40 - hash2(i, 59) * 90;
+    B.add(x, 2.8, z, 3, 0.5, 11, boardCols[i % boardCols.length]);
+    B.add(x, 3.3, z, 1.4, 2, 0.9, 0x33363c);
+    B.add(x, 5.3, z, 1.6, 2, 1.1, BEACH_SHIRTS[i % BEACH_SHIRTS.length]);
+    B.add(x, 7, z, 1.1, 1.1, 1.1, 0xf5c542);
+  }
+
+  // Dolphins leaping in the surf just off the sand.
+  for (const [dx, dz] of [[-80, -110], [20, -130], [100, -95], [-140, -80]] as const) {
+    B.add(dx, 5, dz, 5, 4.5, 13, 0x5a6b78);
+    B.add(dx, 4, dz, 6, 1.4, 4, 0xcdd6dc);
+    B.add(dx, 8, dz - 7, 3.4, 3.4, 5, 0x5a6b78);
+    B.add(dx, 3, dz - 10, 2, 2, 3, 0x5a6b78);
+    B.add(dx, 10, dz, 0.7, 3.4, 3, 0x5a6b78);
   }
 
   // Lifeguard towers.

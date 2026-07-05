@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { DAY_LENGTH } from './constants';
 import { clamp, lerp, smoothstep } from './util';
 
-const SKY_RADIUS = 20000;
+const SKY_RADIUS = 36000;
 
 // Fixed sky direction for the Andromeda galaxy.
 const GALAXY_DIR = new THREE.Vector3(-0.55, 0.5, -0.67).normalize();

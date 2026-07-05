@@ -73,8 +73,8 @@ export class Game {
   private regionTimer = 0;
   private lastRegion = '';
   private fogColor = new THREE.Color(0xbfe3ff);
-  private fogNear = 2200;
-  private fogFar = 15000;
+  private fogNear = 2600;
+  private fogFar = 22000;
   private menuAngle = 0;
   private raf = 0;
   private disposed = false;
@@ -96,7 +96,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.5, 60000);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.5, 100000);
     this.camera.position.set(0, 0, PLANET_R * 2.7);
     this.scene.fog = new THREE.Fog(0xbfe3ff, this.fogNear, this.fogFar);
 
@@ -417,8 +417,8 @@ export class Game {
     // Distance haze: match the horizon tint, disabled for the menu's
     // from-space view of the whole planet.
     const menuView = this.mode === 'menu';
-    this.fogNear = menuView ? 45000 : 2200;
-    this.fogFar = menuView ? 58000 : 15000;
+    this.fogNear = menuView ? 62000 : 2600;
+    this.fogFar = menuView ? 88000 : 22000;
     this.fogColor.copy(FOG_NIGHT).lerp(FOG_DAY, day).lerp(FOG_GOLDEN, golden * 0.5);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.fogColor);
