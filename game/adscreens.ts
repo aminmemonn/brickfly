@@ -137,9 +137,14 @@ export function createAdScreens(towers: AdTower[]): AdScreens {
     objects.push(mesh);
   });
 
+  let lastDraw = -1;
   return {
     objects,
     update(elapsed: number) {
+      // Redraw at ~12 fps regardless of framerate: enough for the ticker/pulse,
+      // but cheap enough to run many billboards across the city without stutter.
+      if (elapsed - lastDraw < 0.08) return;
+      lastDraw = elapsed;
       for (const s of screens) drawScreen(s, elapsed);
     }
   };

@@ -4,7 +4,7 @@ import { CityFrame } from './life';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
 import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, hash2, DEG2RAD } from './util';
-import { NYC_AD_TOWERS, createAdScreens, AdScreens } from './adscreens';
+import { NYC_AD_TOWERS, createAdScreens, AdScreens, AdTower } from './adscreens';
 import { bus } from './bus';
 
 const DISCOVERED_KEY = 'brickfly.discovered';
@@ -484,7 +484,27 @@ function eiffel(B: Bricks): void {
 
 // Real-life-ish Manhattan facade palette: glass, brick, limestone and steel.
 const NYC_FACADES = [
-  0x8fb4c9, 0x6fae9e, 0xb5623f, 0x9c6b4a, 0xd9cdb0, 0x5a7fa0, 0xc7d0d6, 0x7d8a94, 0xa8c4b0, 0x4f6472
+  0x8fb4c9, 0x6fae9e, 0xb5623f, 0x9c6b4a, 0xd9cdb0, 0x5a7fa0, 0xc7d0d6, 0x7d8a94, 0xa8c4b0, 0x4f6472,
+  0x3f6fb0, 0x2f9e8f, 0xcf7a3a, 0xd8b44a, 0x6b5b95, 0xb0555f, 0x4a8db5, 0x9ec6dd, 0xe0d7c2, 0x557a55
+];
+
+// Bright glowing colours for rooftop billboards that break up the skyline.
+const NYC_ROOF_SIGNS = [0xff3b6b, 0xffd21e, 0x38e1ff, 0x2fd08f, 0xff8a3a, 0xc46bff];
+
+// Animated billboards scattered across Manhattan (beyond Times Square). Each is
+// built as a dark-glass tower so its ad screen sits flush on the face. Kept away
+// from Central Park, the Times Square core and the named supertalls.
+const NYC_ADS_SCATTERED: AdTower[] = [
+  { x: -120, z: -260, w: 30, h: 210, face: 'px' },
+  { x: 120, z: -220, w: 28, h: 224, face: 'nx' },
+  { x: -60, z: 300, w: 30, h: 206, face: 'px' },
+  { x: 60, z: 250, w: 30, h: 196, face: 'nx' },
+  { x: -180, z: 60, w: 26, h: 182, face: 'px' },
+  { x: 180, z: -120, w: 26, h: 188, face: 'nx' },
+  { x: 180, z: -470, w: 26, h: 200, face: 'nx' },
+  { x: -120, z: 440, w: 28, h: 198, face: 'px' },
+  { x: 120, z: 150, w: 30, h: 212, face: 'nx' },
+  { x: -60, z: -140, w: 30, h: 218, face: 'px' }
 ];
 
 /** A full grid Manhattan: rivers, avenues and cross-streets with flyable gaps,
@@ -501,8 +521,8 @@ function nyc(B: Bricks): void {
   // ocean sphere, so no brick water plate is needed. This asphalt slab is the
   // island surface rising out of the water; tiled to follow the planet's curve.
   plate(B, 0, 0, HX * 2 + 24, HZ * 2 + 24, 0, 3, asphalt, 110);
-  // Waterfront piers/docks around the island edge.
-  for (let z = -HZ + 80; z < HZ; z += 150) {
+  // Waterfront piers/docks along the straight sides of the island (not the tips).
+  for (let z = -540; z < 540; z += 150) {
     for (const s of [-1, 1]) {
       B.add(s * (HX + 20), 3, z, 40, 1.4, 14, 0x8a7250, { studs: true });
     }
@@ -529,42 +549,60 @@ function nyc(B: Bricks): void {
     B.add(tx, 8, tz, 6, 6, 6, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
 
-  // City blocks on a regular grid, footprints smaller than the cell so the
-  // streets stay open enough to fly down.
+  // City blocks. The island tapers toward its north/south tips (like the real
+  // Manhattan) and buildings are inset from the waterfront, so the ends read as
+  // a shaped skyline instead of an abrupt rectangular wall hanging over the sea.
+  const allAds = [...NYC_AD_TOWERS, ...NYC_ADS_SCATTERED];
+  const nearAd = (x: number, z: number) =>
+    allAds.some((t) => Math.abs(x - t.x) < 34 && Math.abs(z - t.z) < 34);
+
   let n = 0;
   for (let cx = -180; cx <= 180; cx += 60) {
-    for (let cz = -HZ + 34; cz <= HZ - 34; cz += 44) {
+    for (let cz = -HZ + 60; cz <= HZ - 60; cz += 44) {
+      // Taper: usable half-width shrinks toward the tips.
+      const tEnd = Math.max(0, (Math.abs(cz) - 470) / (HZ - 470));
+      const halfW = 180 * (1 - 0.8 * tEnd * tEnd);
+      if (Math.abs(cx) > halfW + 1) continue; // tapered tip
       if (cz > parkZ0 - 10 && cz < parkZ1 + 10 && Math.abs(cx) < 130) continue; // park
       if (Math.abs(cx) < 46 && Math.abs(cz) < 70) continue; // Times Square core
+      if (nearAd(cx, cz)) continue; // billboard towers built below
       const r1 = hash2(cx * 3 + n, cz * 5 + 7);
       const r2 = hash2(cx * 7 + 13, cz * 3 + n);
-      const w = 34 + r1 * 10;
-      const d = 30 + r2 * 8;
+      const w = 30 + r1 * 12;
+      const d = 26 + r2 * 10;
       // Two skyline peaks: Midtown (z≈0) and the Financial District (z≈+620).
       const midtown = 1 - Math.min(1, Math.abs(cz) / 320);
       const downtown = 1 - Math.min(1, Math.abs(cz - 620) / 240);
       const peak = Math.max(midtown, downtown * 0.92);
-      const h = 24 + peak * 140 + r1 * 44;
-      const color = NYC_FACADES[(n * 3 + (cx < 0 ? 2 : 5)) % NYC_FACADES.length];
+      const h = 22 + peak * 150 + r1 * 46;
+      // Mix both axes into the colour so neighbours differ instead of banding.
+      const ci = Math.floor(hash2(cx * 11 + 5, cz * 13 + 3) * NYC_FACADES.length) % NYC_FACADES.length;
       B.add(cx, 3, cz, w + 3, 1, d + 3, 0x9a9ea3);
-      B.add(cx, 3, cz, w, h, d, color, { studs: true });
+      B.add(cx, 3, cz, w, h, d, NYC_FACADES[ci], { studs: true });
       for (let y = 10; y < h - 6; y += 9) {
         B.add(cx, 3 + y, cz, w + 0.6, 1.4, d + 0.6, win, { glow: true });
       }
-      B.add(cx, 3 + h, cz, w * 0.62, 4, d * 0.62, 0x5f666e);
+      // Some roofs get a bright glowing billboard for silhouette variety.
+      if (hash2(cx * 17 + 9, cz * 19 + 1) > 0.8) {
+        const sign = NYC_ROOF_SIGNS[ci % NYC_ROOF_SIGNS.length];
+        B.add(cx, 3 + h + 5, cz, w * 0.82, 11, 2.4, sign, { glow: true });
+        B.add(cx, 3 + h, cz, 2.4, 6, 2.4, 0x5f666e); // sign mast
+      } else {
+        B.add(cx, 3 + h, cz, w * 0.62, 4, d * 0.62, 0x5f666e);
+      }
       n++;
     }
   }
 
-  // Times Square: dark-glass towers wrapped in glowing ad screens.
-  NYC_AD_TOWERS.forEach((t, i) => {
+  // Times Square + scattered billboard towers: dark glass, glowing trim, beacon.
+  for (const t of allAds) {
     B.add(t.x, 3, t.z, t.w, t.h, t.w, 0x30363d, { studs: true });
     for (let y = 12; y < t.h - 6; y += 10) {
       B.add(t.x, 3 + y, t.z, t.w + 0.7, 1.4, t.w + 0.7, 0xffd24a, { glow: true });
     }
     B.add(t.x, 3 + t.h, t.z, t.w * 0.5, 10, t.w * 0.5, 0x30363d);
     B.add(t.x, 3 + t.h + 10, t.z, 1.6, 12, 1.6, 0xff3b6b, { glow: true }); // beacon
-  });
+  }
 
   // Named supertalls.
   // Empire State (midtown).
@@ -1176,7 +1214,7 @@ export class LandmarkManager {
       if (def.id === 'nyc') {
         // Attach the animated Times Square billboards as children so they ride
         // the group's placement (and scale) on the globe.
-        const screens = createAdScreens(NYC_AD_TOWERS);
+        const screens = createAdScreens([...NYC_AD_TOWERS, ...NYC_ADS_SCATTERED]);
         for (const o of screens.objects) group.add(o);
         this.ads.push(screens);
       }
