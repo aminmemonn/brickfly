@@ -34,6 +34,11 @@ varying vec3 vNormal;
 varying vec3 vWorldPos;
 
 void main() {
+  // Only draw real ocean. vDepth encodes sea-floor depth (min ~0.015 over land);
+  // discarding the shallow band keeps water off the land and away from the
+  // shoreline where it would otherwise z-fight the terrain into blue squares.
+  if (vDepth < 0.03) discard;
+
   vec3 shallow = vec3(0.22, 0.76, 0.70);
   vec3 mid = vec3(0.10, 0.47, 0.80);
   vec3 deep = vec3(0.03, 0.22, 0.52);
@@ -91,11 +96,11 @@ export class Water {
   };
 
   constructor(terrain: Terrain) {
-    // Match the globe's tessellation (512×320) exactly so every ocean vertex
-    // sits directly above a terrain vertex. A coarser water sphere left big flat
-    // facets straddling the finer coastline, poking up through land as tilted
-    // blue squares near the coasts (e.g. around NYC).
-    const geo = new THREE.SphereGeometry(PLANET_R + 1, 512, 320);
+    // Deliberately NOT the globe's exact tessellation: sharing vertices makes the
+    // two spheres z-fight into a checkered grid wherever land sits near sea level.
+    // Instead the fragment shader discards water over land, so the coastline is a
+    // clean per-fragment boundary and this mesh only ever paints real ocean.
+    const geo = new THREE.SphereGeometry(PLANET_R + 1, 256, 144);
     const pos = geo.attributes.position;
     const depths = new Float32Array(pos.count);
     const dir = new THREE.Vector3();
