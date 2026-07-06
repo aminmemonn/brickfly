@@ -524,16 +524,20 @@ function nyc(B: Bricks): void {
     return HX * (1 - 0.82 * t * t);
   };
 
-  // Solid asphalt island built as tapered z-slices, so its shoreline matches the
-  // buildings instead of a bare rectangular slab hanging over the harbour. Every
-  // tile curvature-drops on its own to hug the planet.
+  // Solid island built as tapered z-slices matching the building shoreline. Each
+  // slice is a DEEP bedrock block that drops well below the harbour surface, so
+  // the island reads as land rising from the seabed instead of a thin slab
+  // floating over the water (no see-under, no water seeping through the streets).
   const TILE = 108;
+  const bedrock = 0x4a4640;
   for (let cz = -HZ - 10; cz <= HZ + 10; cz += TILE) {
     const halfW = islandHalf(cz) + 22;
     const nx = Math.max(1, Math.ceil((2 * halfW) / TILE));
     const tw = (2 * halfW) / nx;
     for (let i = 0; i < nx; i++) {
-      B.add(-halfW + (i + 0.5) * tw, 0, cz, tw + 1, 3, TILE + 1, asphalt);
+      const x = -halfW + (i + 0.5) * tw;
+      B.add(x, -14, cz, tw + 1, 17, TILE + 1, bedrock); // deep foundation below sea
+      B.add(x, 2.4, cz, tw + 1, 0.8, TILE + 1, asphalt); // dark asphalt street cap
     }
   }
 
