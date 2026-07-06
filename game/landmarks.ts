@@ -277,7 +277,7 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       trees: 10
     }
   },
-  nyc: { frame: { ring: 130, plaza: 170, groundY: 3 } }
+  nyc: { frame: { ring: 210, plaza: 260, groundY: 3 } }
 };
 
 /**
@@ -514,81 +514,103 @@ function nyc(B: Bricks): void {
   const asphalt = 0x3c4046;
   const stripe = 0x6a707a;
   const win = 0xffe98a;
-  const HX = 210;
-  const HZ = 780;
+  const HX = 300; // island half-width
+  const HZ = 1040; // island half-length — bigger, GTA-style scale
 
-  // Manhattan is an island: its pad is a sub-sea harbor filled by the global
-  // ocean sphere, so no brick water plate is needed. This asphalt slab is the
-  // island surface rising out of the water; tiled to follow the planet's curve.
-  plate(B, 0, 0, HX * 2 + 24, HZ * 2 + 24, 0, 3, asphalt, 110);
-  // Waterfront piers/docks along the straight sides of the island (not the tips).
-  for (let z = -540; z < 540; z += 150) {
-    for (const s of [-1, 1]) {
-      B.add(s * (HX + 20), 3, z, 40, 1.4, 14, 0x8a7250, { studs: true });
+  // Tapered island outline: full width through the body, narrowing to points at
+  // the north/south tips (like the real Manhattan / Battery Park).
+  const islandHalf = (cz: number): number => {
+    const t = Math.max(0, (Math.abs(cz) - 0.56 * HZ) / (0.44 * HZ));
+    return HX * (1 - 0.82 * t * t);
+  };
+
+  // Solid asphalt island built as tapered z-slices, so its shoreline matches the
+  // buildings instead of a bare rectangular slab hanging over the harbour. Every
+  // tile curvature-drops on its own to hug the planet.
+  const TILE = 108;
+  for (let cz = -HZ - 10; cz <= HZ + 10; cz += TILE) {
+    const halfW = islandHalf(cz) + 22;
+    const nx = Math.max(1, Math.ceil((2 * halfW) / TILE));
+    const tw = (2 * halfW) / nx;
+    for (let i = 0; i < nx; i++) {
+      B.add(-halfW + (i + 0.5) * tw, 0, cz, tw + 1, 3, TILE + 1, asphalt);
     }
   }
 
-  const AVENUES = [-180, -120, -60, 0, 60, 120, 180];
-  // Street stripes segmented so they hug the curve rather than arch off it.
-  for (const ax of AVENUES) {
-    for (let z = -HZ; z < HZ; z += 110) B.add(ax, 3.2, z + 55, 8, 0.4, 112, stripe);
+  // Wide avenues + cross-streets (only where there is island under them).
+  for (let ax = -252; ax <= 252; ax += 84) {
+    for (let z = -HZ; z < HZ; z += 110) {
+      if (Math.abs(ax) < islandHalf(z) - 10) B.add(ax, 3.2, z + 55, 9, 0.4, 112, stripe);
+    }
   }
-  for (let z = -HZ; z <= HZ; z += 44) {
-    for (let x = -HX; x < HX; x += 110) B.add(x + 55, 3.2, z, 112, 0.4, 8, stripe);
+  for (let z = -HZ; z <= HZ; z += 76) {
+    const hw = islandHalf(z) - 10;
+    for (let x = -hw; x < hw; x += 110) B.add(x + 55, 3.2, z, 112, 0.4, 9, stripe);
   }
 
   // Central Park: a long green rectangle with a pond and trees.
-  const parkZ0 = -600;
-  const parkZ1 = -380;
-  B.add(0, 3, (parkZ0 + parkZ1) / 2, 250, 1.8, parkZ1 - parkZ0, 0x3fa021, { studs: true });
-  B.add(-40, 4, -470, 70, 1, 46, 0x3f8fd4);
-  for (let i = 0; i < 46; i++) {
-    const tx = (hash2(i, 3) - 0.5) * 230;
+  const parkZ0 = -640;
+  const parkZ1 = -320;
+  B.add(0, 3, (parkZ0 + parkZ1) / 2, 320, 1.8, parkZ1 - parkZ0, 0x3fa021, { studs: true });
+  B.add(-60, 4, -470, 100, 1, 66, 0x3f8fd4);
+  for (let i = 0; i < 64; i++) {
+    const tx = (hash2(i, 3) - 0.5) * 300;
     const tz = parkZ0 + hash2(i, 7) * (parkZ1 - parkZ0);
-    B.add(tx, 4, tz, 1.4, 4, 1.4, 0x8a6743);
-    B.add(tx, 8, tz, 6, 6, 6, i % 2 ? 0x2e7d1e : 0x3fa021);
+    B.add(tx, 4, tz, 1.6, 4, 1.6, 0x8a6743);
+    B.add(tx, 8, tz, 7, 7, 7, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
 
-  // City blocks. The island tapers toward its north/south tips (like the real
-  // Manhattan) and buildings are inset from the waterfront, so the ends read as
-  // a shaped skyline instead of an abrupt rectangular wall hanging over the sea.
+  // City blocks — wide flyable avenues, stepped Art-Deco setbacks and spires for
+  // a varied, artistic skyline. Buildings are inset from the tapered shoreline.
   const allAds = [...NYC_AD_TOWERS, ...NYC_ADS_SCATTERED];
   const nearAd = (x: number, z: number) =>
-    allAds.some((t) => Math.abs(x - t.x) < 34 && Math.abs(z - t.z) < 34);
+    allAds.some((t) => Math.abs(x - t.x) < 44 && Math.abs(z - t.z) < 44);
 
   let n = 0;
-  for (let cx = -180; cx <= 180; cx += 60) {
-    for (let cz = -HZ + 60; cz <= HZ - 60; cz += 44) {
-      // Taper: usable half-width shrinks toward the tips.
-      const tEnd = Math.max(0, (Math.abs(cz) - 470) / (HZ - 470));
-      const halfW = 180 * (1 - 0.8 * tEnd * tEnd);
-      if (Math.abs(cx) > halfW + 1) continue; // tapered tip
-      if (cz > parkZ0 - 10 && cz < parkZ1 + 10 && Math.abs(cx) < 130) continue; // park
-      if (Math.abs(cx) < 46 && Math.abs(cz) < 70) continue; // Times Square core
+  for (let cx = -252; cx <= 252; cx += 84) {
+    for (let cz = -HZ + 96; cz <= HZ - 96; cz += 78) {
+      if (Math.abs(cx) > islandHalf(cz) - 46) continue; // inset from the shore
+      if (cz > parkZ0 - 12 && cz < parkZ1 + 12 && Math.abs(cx) < 176) continue; // park
+      if (Math.abs(cx) < 62 && Math.abs(cz) < 96) continue; // Times Square core
       if (nearAd(cx, cz)) continue; // billboard towers built below
       const r1 = hash2(cx * 3 + n, cz * 5 + 7);
       const r2 = hash2(cx * 7 + 13, cz * 3 + n);
-      const w = 30 + r1 * 12;
-      const d = 26 + r2 * 10;
-      // Two skyline peaks: Midtown (z≈0) and the Financial District (z≈+620).
-      const midtown = 1 - Math.min(1, Math.abs(cz) / 320);
-      const downtown = 1 - Math.min(1, Math.abs(cz - 620) / 240);
-      const peak = Math.max(midtown, downtown * 0.92);
-      const h = 22 + peak * 150 + r1 * 46;
-      // Mix both axes into the colour so neighbours differ instead of banding.
+      const w = 42 + r1 * 18;
+      const d = 36 + r2 * 14;
+      // Two skyline peaks: Midtown (z≈0) and the Financial District (z≈+800).
+      const midtown = 1 - Math.min(1, Math.abs(cz) / 380);
+      const downtown = 1 - Math.min(1, Math.abs(cz - 800) / 280);
+      const peak = Math.max(midtown, downtown * 0.9);
+      const h1 = 26 + peak * 156 + r1 * 54;
       const ci = Math.floor(hash2(cx * 11 + 5, cz * 13 + 3) * NYC_FACADES.length) % NYC_FACADES.length;
-      B.add(cx, 3, cz, w + 3, 1, d + 3, 0x9a9ea3);
-      B.add(cx, 3, cz, w, h, d, NYC_FACADES[ci], { studs: true });
-      for (let y = 10; y < h - 6; y += 9) {
-        B.add(cx, 3 + y, cz, w + 0.6, 1.4, d + 0.6, win, { glow: true });
+      const ci2 = (ci + 3 + Math.floor(r2 * 5)) % NYC_FACADES.length;
+      B.add(cx, 3, cz, w + 4, 1, d + 4, 0x9a9ea3); // sidewalk footprint
+      B.add(cx, 3, cz, w, h1, d, NYC_FACADES[ci], { studs: true });
+      for (let y = 12; y < h1 - 6; y += 10) {
+        B.add(cx, 3 + y, cz, w + 0.6, 1.6, d + 0.6, win, { glow: true });
       }
-      // Some roofs get a bright glowing billboard for silhouette variety.
-      if (hash2(cx * 17 + 9, cz * 19 + 1) > 0.8) {
+      // Setback upper tier.
+      const h2 = 14 + r2 * 48;
+      const w2 = w * 0.66;
+      const d2 = d * 0.66;
+      B.add(cx, 3 + h1, cz, w2, h2, d2, NYC_FACADES[ci2], { studs: true });
+      for (let y = 8; y < h2 - 4; y += 10) {
+        B.add(cx, 3 + h1 + y, cz, w2 + 0.6, 1.4, d2 + 0.6, win, { glow: true });
+      }
+      // Crown: rooftop billboard, spire, or brick water-tower for variety.
+      const cap = hash2(cx * 17 + 9, cz * 19 + 1);
+      const topY = 3 + h1 + h2;
+      if (cap > 0.76) {
         const sign = NYC_ROOF_SIGNS[ci % NYC_ROOF_SIGNS.length];
-        B.add(cx, 3 + h + 5, cz, w * 0.82, 11, 2.4, sign, { glow: true });
-        B.add(cx, 3 + h, cz, 2.4, 6, 2.4, 0x5f666e); // sign mast
+        B.add(cx, topY + 7, cz, w2 * 0.92, 13, 2.6, sign, { glow: true });
+        B.add(cx, topY, cz, 2.6, 8, 2.6, 0x5f666e);
+      } else if (cap > 0.48) {
+        const sp = 22 + r1 * 30;
+        B.add(cx, topY, cz, 3, sp, 3, 0xc9d2da);
+        B.add(cx, topY + sp, cz, 1.2, 9, 1.2, 0xff3b6b, { glow: true });
       } else {
-        B.add(cx, 3 + h, cz, w * 0.62, 4, d * 0.62, 0x5f666e);
+        B.add(cx + w2 * 0.22, topY, cz, 6, 7, 6, 0x7a5a3a); // rooftop water tower
+        B.add(cx + w2 * 0.22, topY + 7, cz, 7, 3, 7, 0x5a3f28);
       }
       n++;
     }
@@ -604,25 +626,48 @@ function nyc(B: Bricks): void {
     B.add(t.x, 3 + t.h + 10, t.z, 1.6, 12, 1.6, 0xff3b6b, { glow: true }); // beacon
   }
 
-  // Named supertalls.
+  // Named supertalls (repositioned for the bigger island).
   // Empire State (midtown).
-  B.add(120, 3, 40, 34, 96, 34, 0xb7bcc2, { studs: true });
-  B.add(120, 99, 40, 23, 46, 23, 0xb7bcc2);
-  B.add(120, 145, 40, 14, 26, 14, 0xc7ccd1);
-  B.add(120, 171, 40, 2.6, 24, 2.6, 0xe6ebf0);
-  for (let y = 12; y < 90; y += 12) B.add(120, 3 + y, 40, 34.7, 1.4, 34.7, win, { glow: true });
-  // One World Trade (downtown, tapered glass).
-  B.add(0, 3, 660, 30, 150, 30, 0x9ec6dd, { studs: true });
-  B.add(0, 153, 660, 6, 60, 6, 0xcfe4f2);
-  for (let y = 12; y < 150; y += 11) B.add(0, 3 + y, 660, 30.6, 1.3, 30.6, 0xbfe0ff, { glow: true });
+  B.add(168, 3, 40, 40, 118, 40, 0xb7bcc2, { studs: true });
+  B.add(168, 121, 40, 27, 54, 27, 0xb7bcc2);
+  B.add(168, 175, 40, 16, 30, 16, 0xc7ccd1);
+  B.add(168, 205, 40, 3, 28, 3, 0xe6ebf0);
+  for (let y = 14; y < 112; y += 12) B.add(168, 3 + y, 40, 40.7, 1.4, 40.7, win, { glow: true });
+  // One World Trade (downtown).
+  B.add(0, 3, 820, 34, 176, 34, 0x9ec6dd, { studs: true });
+  B.add(0, 179, 820, 7, 66, 7, 0xcfe4f2);
+  for (let y = 14; y < 176; y += 12) B.add(0, 3 + y, 820, 34.6, 1.3, 34.6, 0xbfe0ff, { glow: true });
   // Chrysler-style crown.
-  B.add(-120, 3, 30, 26, 104, 26, 0xc7cdd2, { studs: true });
-  for (let k = 0; k < 5; k++) B.add(-120, 107 + k * 6, 30, 20 - k * 3.4, 6, 20 - k * 3.4, 0xd9e0e6);
-  B.add(-120, 137, 30, 1.6, 18, 1.6, 0xe6ebf0);
+  B.add(-168, 3, 24, 30, 122, 30, 0xc7cdd2, { studs: true });
+  for (let k = 0; k < 6; k++) B.add(-168, 125 + k * 6, 24, 24 - k * 3.6, 6, 24 - k * 3.6, 0xd9e0e6);
+  B.add(-168, 161, 24, 1.8, 20, 1.8, 0xe6ebf0);
+
+  // Waterfront docks with moored boats along both shores (boats float at the
+  // harbour surface, well below the raised island deck).
+  const docks: [number, number][] = [
+    [-700, -1], [-360, 1], [-60, -1], [260, 1], [560, -1], [820, 1]
+  ];
+  for (const [dz, side] of docks) {
+    const hw = islandHalf(dz);
+    const ex = side * hw;
+    B.add(ex + side * 34, 3, dz, 66, 1.6, 18, 0x8a7250, { studs: true }); // pier deck
+    nycBoat(B, ex + side * 82, dz, hash2(dz, 5));
+  }
 
   // A couple of McBrick's on the avenues.
-  burgerJoint(B, 40, -150);
-  burgerJoint(B, -40, 220);
+  burgerJoint(B, 60, -180);
+  burgerJoint(B, -60, 260);
+}
+
+/** A moored brick boat/yacht sitting at the harbour surface next to the island. */
+function nycBoat(B: Bricks, cx: number, cz: number, r: number): void {
+  const hull = r > 0.5 ? 0xe8ecef : 0xf2efe6;
+  const y = -1.5; // local level that lands the hull on the ocean surface (+1 world)
+  B.add(cx, y, cz, 30, 5, 12, hull, { studs: true });
+  B.add(cx, y + 5, cz, 18, 6, 9, 0xdfe6ec);
+  B.add(cx, y + 5, cz, 30, 3.5, 3, 0x2a63b8, { glow: true }); // side advert stripe
+  B.add(cx, y + 11, cz, 2, 9, 2, 0x9aa3ab); // mast
+  B.add(cx + 5, y + 14, cz, 9, 6, 0.6, 0xf6f6f2); // sail/flag
 }
 
 /** A little fast-food stand crowned with golden arches. */
