@@ -3,6 +3,7 @@ import { PLANET_R } from './constants';
 import { Terrain } from './terrain';
 import { LANDMARKS } from './landmark-data';
 import { latLonToDir, tangentBasis, hash2, DEG2RAD } from './util';
+import { createABSColoredMaterial } from './brick-material';
 
 /**
  * Populates the sky: little brick planes towing paper-banner adverts, drifting
@@ -172,9 +173,9 @@ export class SkyLife {
 
   constructor(terrain: Terrain) {
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const mats = new Map<number, THREE.MeshStandardMaterial>();
+    const mats = new Map<number, THREE.ShaderMaterial>();
     const mat = (c: number) => {
-      if (!mats.has(c)) mats.set(c, new THREE.MeshStandardMaterial({ color: c, roughness: 0.42, metalness: 0.05 }));
+      if (!mats.has(c)) mats.set(c, createABSColoredMaterial(c));
       return mats.get(c)!;
     };
     const glow = (c: number) => new THREE.MeshBasicMaterial({ color: c });

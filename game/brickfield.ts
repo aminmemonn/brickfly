@@ -1,14 +1,25 @@
 import * as THREE from 'three';
-import { PLANET_R, BRICK_SIZE, BRICK_H, STUD_R, STUD_H } from './constants';
+import { BRICK_ASPECT, BRICK_H, BRICK_SIZE, PLANET_R, STUD_H, STUD_LOD_DISTANCE } from './constants';
 import { Terrain } from './terrain';
 import { QualityPreset } from './settings';
-import { latLonToDir, dirToLatLon, tangentBasis, basisQuat, hash2, makeAOBox } from './util';
+import { latLonToDir, dirToLatLon, tangentBasis, basisQuat, hash2 } from './util';
+import {
+  ABS_BRICK_MATERIAL,
+  ABS_STUD_MATERIAL,
+  makeABSBrickGeometry,
+  makeABSStudGeometry,
+  makeStudGridAttribute
+} from './brick-material';
 
 const MAX_LAND = 9500;
 const MAX_STUDS = 12500;
 
 const ANG_STEP = BRICK_SIZE / PLANET_R;
 const LAT_LIMIT = 1.45;
+const BRICK_GAP = 0.14;
+// Includes enough travel headroom for the near-field rebuild cadence at the
+// simulator's maximum speed, while physical visibility ends exactly at 200.
+const STUD_GEOMETRY_RADIUS = STUD_LOD_DISTANCE + 60;
 
 const tmpDir = new THREE.Vector3();
 const tmpUp = new THREE.Vector3();
@@ -29,27 +40,24 @@ export class BrickField {
 
   private land: THREE.InstancedMesh;
   private studs: THREE.InstancedMesh;
+  private studGrid: THREE.InstancedBufferAttribute;
 
   private preset: QualityPreset;
   private lastRow = Number.MIN_SAFE_INTEGER;
   private lastCol = Number.MIN_SAFE_INTEGER;
   private cooldown = 0;
   private dirty = true;
+  private studsWereNear = false;
 
   constructor(private terrain: Terrain, preset: QualityPreset) {
     this.preset = preset;
 
-    const brickGeo = makeAOBox();
-    const brickMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.34,
-      metalness: 0.04
-    });
-    this.land = new THREE.InstancedMesh(brickGeo, brickMat, MAX_LAND);
+    const brickGeo = makeABSBrickGeometry();
+    this.studGrid = makeStudGridAttribute(MAX_LAND);
+    brickGeo.setAttribute('instanceStudGrid', this.studGrid);
+    this.land = new THREE.InstancedMesh(brickGeo, ABS_BRICK_MATERIAL, MAX_LAND);
 
-    const studGeo = new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 10);
-    const studMat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.04 });
-    this.studs = new THREE.InstancedMesh(studGeo, studMat, MAX_STUDS);
+    this.studs = new THREE.InstancedMesh(makeABSStudGeometry(), ABS_STUD_MATERIAL, MAX_STUDS);
 
     for (const mesh of [this.land, this.studs]) {
       mesh.frustumCulled = false;
@@ -57,6 +65,7 @@ export class BrickField {
       this.group.add(mesh);
     }
     this.land.receiveShadow = true;
+    this.studs.receiveShadow = true;
   }
 
   setQuality(preset: QualityPreset): void {
@@ -66,10 +75,16 @@ export class BrickField {
 
   setShadows(enabled: boolean): void {
     this.land.castShadow = enabled;
+    this.studs.castShadow = enabled;
   }
 
-  update(dt: number, playerDir: THREE.Vector3): void {
+  update(dt: number, playerDir: THREE.Vector3, cameraPosition: THREE.Vector3): void {
     this.cooldown -= dt;
+    const studsNear = cameraPosition.length() - PLANET_R < STUD_GEOMETRY_RADIUS + BRICK_H * 3;
+    if (studsNear !== this.studsWereNear) {
+      this.studsWereNear = studsNear;
+      this.dirty = true;
+    }
     if (this.cooldown > 0 && !this.dirty) return;
 
     const { lat, lon } = dirToLatLon(playerDir);
@@ -87,12 +102,12 @@ export class BrickField {
     this.lastRow = row;
     this.lastCol = col;
     this.dirty = false;
-    this.cooldown = 0.25;
-    this.rebuild(row, lon);
+    this.cooldown = this.studsWereNear ? 0.08 : 0.25;
+    this.rebuild(row, lon, cameraPosition);
   }
 
-  private rebuild(rowCenter: number, lonCenter: number): void {
-    const { fieldN, studN } = this.preset;
+  private rebuild(rowCenter: number, lonCenter: number, cameraPosition: THREE.Vector3): void {
+    const { fieldN, studs: studsEnabled } = this.preset;
     const terrain = this.terrain;
 
     let li = 0;
@@ -124,25 +139,39 @@ export class BrickField {
         basisQuat(tmpEast, tmpUp, tmpNorth, tmpQuat);
 
         const hq = Math.ceil(h / BRICK_H) * BRICK_H;
-        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - BRICK_H / 2);
-        tmpScale.set(cellW * 1.03, BRICK_H, cellD * 1.03);
+        // A narrow physical seam is essential: overlapping the old bricks by
+        // 3% fused the entire field into one continuous slab. The visible body
+        // keeps the requested 1.6:1 mould proportion inside its grid pitch.
+        const brickW = Math.max(0.1, cellW - BRICK_GAP);
+        const brickD = Math.max(0.1, cellD - BRICK_GAP);
+        const bodyH = Math.min(brickW, brickD) / BRICK_ASPECT;
+        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - bodyH / 2);
+        tmpScale.set(brickW, bodyH, brickD);
         tmpMat.compose(tmpPos, tmpQuat, tmpScale);
         this.land.setMatrixAt(li, tmpMat);
 
         terrain.colorAt(tmpDir, h, tmpCol);
-        tmpCol.multiplyScalar(0.92 + hash2(row, c) * 0.16);
+        tmpCol.multiplyScalar(0.98 + hash2(row, c) * 0.08);
         this.land.setColorAt(li, tmpCol);
+        this.studGrid.setXY(li, studsEnabled ? 2 : 0, studsEnabled ? 2 : 0);
         li++;
 
-        if (studN > 0 && Math.abs(dr) <= studN && Math.abs(dc) <= studN && si + 4 <= MAX_STUDS) {
+        // Actual cylinders exist only in a circular 200-unit camera volume.
+        // The body shader cross-fades to its procedural stud normal outside it.
+        const studTopCenter = tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq + STUD_H / 2);
+        if (
+          studsEnabled &&
+          studTopCenter.distanceToSquared(cameraPosition) <= STUD_GEOMETRY_RADIUS * STUD_GEOMETRY_RADIUS &&
+          si + 4 <= MAX_STUDS
+        ) {
           const topR = PLANET_R + hq + STUD_H / 2;
           for (let sx = -1; sx <= 1; sx += 2) {
             for (let sz = -1; sz <= 1; sz += 2) {
               tmpPos
                 .copy(tmpDir)
                 .multiplyScalar(topR)
-                .addScaledVector(tmpEast, (sx * cellW) / 4)
-                .addScaledVector(tmpNorth, (sz * cellD) / 4);
+                .addScaledVector(tmpEast, (sx * brickW) / 4)
+                .addScaledVector(tmpNorth, (sz * brickD) / 4);
               tmpScale.set(1, 1, 1);
               tmpMat.compose(tmpPos, tmpQuat, tmpScale);
               this.studs.setMatrixAt(si, tmpMat);
@@ -158,6 +187,7 @@ export class BrickField {
     this.studs.count = si;
     this.land.instanceMatrix.needsUpdate = true;
     this.studs.instanceMatrix.needsUpdate = true;
+    this.studGrid.needsUpdate = true;
     if (this.land.instanceColor) this.land.instanceColor.needsUpdate = true;
     if (this.studs.instanceColor) this.studs.instanceColor.needsUpdate = true;
   }

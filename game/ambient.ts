@@ -3,6 +3,7 @@ import { PLANET_R } from './constants';
 import { Terrain } from './terrain';
 import { LANDMARKS } from './landmark-data';
 import { latLonToDir, tangentBasis, basisQuat, hash2, DEG2RAD } from './util';
+import { createABSColoredMaterial } from './brick-material';
 
 const BALLOON_PALETTES: number[][] = [
   [0xd6382c, 0xf7d354, 0xd6382c, 0xf7d354, 0xf4f4f2],
@@ -33,9 +34,9 @@ export class Ambient {
     const east = new THREE.Vector3();
     const north = new THREE.Vector3();
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    const mats = new Map<number, THREE.MeshStandardMaterial>();
+    const mats = new Map<number, THREE.ShaderMaterial>();
     const mat = (c: number) => {
-      if (!mats.has(c)) mats.set(c, new THREE.MeshStandardMaterial({ color: c, roughness: 0.4 }));
+      if (!mats.has(c)) mats.set(c, createABSColoredMaterial(c));
       return mats.get(c)!;
     };
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ABS_SOLID_MATERIAL } from './brick-material';
 
 const POOL = 96;
 const LIFE = 2.2;
@@ -27,8 +28,7 @@ export class Explosion {
   private active = false;
 
   constructor() {
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.05 });
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, POOL);
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), ABS_SOLID_MATERIAL, POOL);
     this.mesh.frustumCulled = false;
     const col = new THREE.Color();
     for (let i = 0; i < POOL; i++) {

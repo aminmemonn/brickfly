@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import { PLANET_R, BRICK_H } from './constants';
+import { PLANET_R, BRICK_H, STUD_PITCH } from './constants';
 import { CityFrame } from './life';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
-import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, makeAOBox, clamp, hash2, DEG2RAD } from './util';
+import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, clamp, hash2, DEG2RAD } from './util';
 import { NYC_AD_TOWERS, createAdScreens, AdScreens, AdTower } from './adscreens';
 import { bus } from './bus';
+import { ABS_BRICK_MATERIAL, makeABSBrickGeometry, makeStudGridAttribute } from './brick-material';
+import { BrickStudPool, studCountForSpan } from './brick-stud-pool';
 
 const DISCOVERED_KEY = 'brickfly.discovered';
 
@@ -45,10 +47,6 @@ interface BrickSpec {
   glow: boolean;
 }
 
-const sharedBrickGeo = makeAOBox();
-const sharedStudGeo = new THREE.CylinderGeometry(1.5, 1.5, 1.3, 10);
-const brickMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.04 });
-const studMat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.04 });
 const sharedGlowGeo = new THREE.BoxGeometry(1, 1, 1);
 const glowMat = new THREE.MeshBasicMaterial();
 
@@ -87,16 +85,16 @@ class Bricks {
     const group = new THREE.Group();
     const solid = this.list.filter((b) => !b.glow);
     const glows = this.list.filter((b) => b.glow);
-    const bricks = new THREE.InstancedMesh(sharedBrickGeo, brickMat, solid.length);
+    const brickGeometry = makeABSBrickGeometry();
+    const studGrid = makeStudGridAttribute(solid.length);
+    brickGeometry.setAttribute('instanceStudGrid', studGrid);
+    const bricks = new THREE.InstancedMesh(brickGeometry, ABS_BRICK_MATERIAL, solid.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
     const pos = new THREE.Vector3();
     const scale = new THREE.Vector3();
     const col = new THREE.Color();
-
-    const studXf: THREE.Matrix4[] = [];
-    const studCols: THREE.Color[] = [];
 
     solid.forEach((b, i) => {
       e.set(0, b.ry, 0);
@@ -107,41 +105,17 @@ class Bricks {
       bricks.setMatrixAt(i, m);
       bricks.setColorAt(i, col.setHex(b.color));
 
-      if (b.studs) {
-        const nx = clamp(Math.round(b.w / 5), 1, 7);
-        const nz = clamp(Math.round(b.d / 5), 1, 7);
-        const cosR = Math.cos(b.ry);
-        const sinR = Math.sin(b.ry);
-        for (let gx = 0; gx < nx; gx++) {
-          for (let gz = 0; gz < nz; gz++) {
-            const lx = ((gx + 0.5) / nx - 0.5) * b.w;
-            const lz = ((gz + 0.5) / nz - 0.5) * b.d;
-            const rx = lx * cosR + lz * sinR;
-            const rz = -lx * sinR + lz * cosR;
-            const sm = new THREE.Matrix4().makeTranslation(b.x + rx, b.y + b.h + 0.65, b.z + rz);
-            studXf.push(sm);
-            studCols.push(col.clone());
-          }
-        }
-      }
+      const nx = studCountForSpan(b.w, STUD_PITCH);
+      const nz = studCountForSpan(b.d, STUD_PITCH);
+      studGrid.setXY(i, nx > 0 && nz > 0 ? nx : 0, nx > 0 && nz > 0 ? nz : 0);
     });
 
     bricks.instanceMatrix.needsUpdate = true;
+    studGrid.needsUpdate = true;
     if (bricks.instanceColor) bricks.instanceColor.needsUpdate = true;
     bricks.castShadow = true;
     bricks.receiveShadow = true;
     group.add(bricks);
-
-    if (studXf.length > 0) {
-      const studs = new THREE.InstancedMesh(sharedStudGeo, studMat, studXf.length);
-      studXf.forEach((sm, i) => {
-        studs.setMatrixAt(i, sm);
-        studs.setColorAt(i, studCols[i]);
-      });
-      studs.instanceMatrix.needsUpdate = true;
-      if (studs.instanceColor) studs.instanceColor.needsUpdate = true;
-      group.add(studs);
-    }
 
     if (glows.length > 0) {
       const glow = new THREE.InstancedMesh(sharedGlowGeo, glowMat, glows.length);
@@ -160,6 +134,46 @@ class Bricks {
     }
 
     return group;
+  }
+
+  registerStudSurfaces(pool: BrickStudPool, group: THREE.Group): void {
+    group.updateMatrixWorld(true);
+    const worldScale = new THREE.Vector3();
+    const groupQuaternion = new THREE.Quaternion();
+    const localQuaternion = new THREE.Quaternion();
+    const worldQuaternion = new THREE.Quaternion();
+    const topCenter = new THREE.Vector3();
+    const axisX = new THREE.Vector3();
+    const axisY = new THREE.Vector3();
+    const axisZ = new THREE.Vector3();
+    const color = new THREE.Color();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    group.getWorldScale(worldScale);
+    group.getWorldQuaternion(groupQuaternion);
+
+    for (const brick of this.list) {
+      if (brick.glow) continue;
+      const nx = studCountForSpan(brick.w, STUD_PITCH);
+      const nz = studCountForSpan(brick.d, STUD_PITCH);
+      if (nx === 0 || nz === 0) continue;
+      localQuaternion.setFromAxisAngle(yAxis, brick.ry);
+      worldQuaternion.copy(groupQuaternion).multiply(localQuaternion);
+      axisX.set(1, 0, 0).applyQuaternion(worldQuaternion);
+      axisY.set(0, 1, 0).applyQuaternion(worldQuaternion);
+      axisZ.set(0, 0, 1).applyQuaternion(worldQuaternion);
+      topCenter.set(brick.x, brick.y + brick.h, brick.z).applyMatrix4(group.matrixWorld);
+      pool.registerSurface({
+        center: topCenter,
+        axisX,
+        axisY,
+        axisZ,
+        width: brick.w * worldScale.x,
+        depth: brick.d * worldScale.z,
+        bodyHeight: brick.h * worldScale.y,
+        pitch: STUD_PITCH * Math.min(worldScale.x, worldScale.z),
+        color: color.setHex(brick.color)
+      });
+    }
   }
 }
 
@@ -1196,7 +1210,7 @@ export class LandmarkManager {
   private discovered = new Set<string>();
   private nearId: string | null = null;
 
-  constructor(private terrain: Terrain) {
+  constructor(private terrain: Terrain, private studPool: BrickStudPool) {
     try {
       const raw = localStorage.getItem(DISCOVERED_KEY);
       if (raw) JSON.parse(raw).forEach((id: string) => this.discovered.add(id));
@@ -1276,6 +1290,7 @@ export class LandmarkManager {
       basisQuat(east, dir, north, q);
       group.quaternion.copy(q);
       this.group.add(group);
+      B.registerStudSurfaces(this.studPool, group);
 
       if (cfg?.frame) {
         this.cities.push({

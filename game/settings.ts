@@ -9,16 +9,16 @@ export interface Settings {
 export interface QualityPreset {
   /** Half-extent of the near-field brick grid, in cells. */
   fieldN: number;
-  /** Half-extent within which studs are instanced. 0 disables studs. */
-  studN: number;
+  /** Enables the 200-unit cylinder-to-normal stud LOD. */
+  studs: boolean;
   shadows: boolean;
   maxDpr: number;
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
-  low: { fieldN: 20, studN: 0, shadows: false, maxDpr: 1 },
-  medium: { fieldN: 30, studN: 16, shadows: false, maxDpr: 1.5 },
-  high: { fieldN: 44, studN: 26, shadows: true, maxDpr: 2 }
+  low: { fieldN: 20, studs: false, shadows: false, maxDpr: 1 },
+  medium: { fieldN: 30, studs: true, shadows: false, maxDpr: 1.5 },
+  high: { fieldN: 44, studs: true, shadows: true, maxDpr: 2 }
 };
 
 const KEY = 'brickfly.settings';

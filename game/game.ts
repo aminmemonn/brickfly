@@ -23,6 +23,8 @@ import { LANDMARKS } from './landmark-data';
 import { buildSettlements } from './settlements';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
 import { dirToLatLon, RAD2DEG } from './util';
+import { updateABSStudioLighting } from './brick-material';
+import { BrickStudPool } from './brick-stud-pool';
 
 export type GameMode = 'boot' | 'menu' | 'playing' | 'paused';
 
@@ -31,10 +33,17 @@ const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 const vTmp = new THREE.Vector3();
 const vWingL = new THREE.Vector3();
 const vWingR = new THREE.Vector3();
+const vFillDir = new THREE.Vector3();
+const vLightUp = new THREE.Vector3();
+const absAmbient = new THREE.Color();
 
 const FOG_DAY = new THREE.Color(0xbfe3ff);
-const FOG_NIGHT = new THREE.Color(0x0e1830);
+const FOG_NIGHT = new THREE.Color(0x1b2b4a);
 const FOG_GOLDEN = new THREE.Color(0xffb27a);
+const KEY_GOLDEN = new THREE.Color(0xffae68);
+const KEY_NIGHT = new THREE.Color(0x9fb6dc);
+const FILL_NIGHT = new THREE.Color(0x7189bb);
+const AMBIENT_NIGHT = new THREE.Color(0x52627c);
 
 export class Game {
   mode: GameMode = 'boot';
@@ -59,11 +68,13 @@ export class Game {
   private skyLife!: SkyLife;
   private seaLife!: SeaLife;
   private life!: CityLife;
+  private studPool: BrickStudPool;
   private audio = new AudioManager();
   private input = new Input();
 
-  private hemi: THREE.HemisphereLight;
+  private ambientLight: THREE.AmbientLight;
   private sun: THREE.DirectionalLight;
+  private fill: THREE.DirectionalLight;
 
   private settings: Settings;
   private clock = new THREE.Clock();
@@ -74,7 +85,7 @@ export class Game {
   private lastRegion = '';
   private fogColor = new THREE.Color(0xbfe3ff);
   private fogNear = 2600;
-  private fogFar = 22000;
+  private fogFar = 34000;
   private menuAngle = 0;
   private raf = 0;
   private disposed = false;
@@ -100,10 +111,10 @@ export class Game {
     this.camera.position.set(0, 0, PLANET_R * 2.7);
     this.scene.fog = new THREE.Fog(0xbfe3ff, this.fogNear, this.fogFar);
 
-    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x4a5568, 0.6);
-    this.scene.add(this.hemi);
+    this.ambientLight = new THREE.AmbientLight(0x7f8da2, 0.28);
+    this.scene.add(this.ambientLight);
 
-    this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    this.sun = new THREE.DirectionalLight(0xffd29b, 2.2);
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.left = -280;
     this.sun.shadow.camera.right = 280;
@@ -114,6 +125,13 @@ export class Game {
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+
+    this.fill = new THREE.DirectionalLight(0x9ec9ff, this.sun.intensity * 0.3);
+    this.scene.add(this.fill);
+    this.scene.add(this.fill.target);
+
+    this.studPool = new BrickStudPool();
+    this.scene.add(this.studPool.mesh);
 
     this.handleResize();
     window.addEventListener('resize', this.handleResize);
@@ -153,12 +171,12 @@ export class Game {
 
     progress(66, 'Raising landmarks');
     await nextFrame();
-    this.landmarks = new LandmarkManager(this.terrain);
+    this.landmarks = new LandmarkManager(this.terrain, this.studPool);
     this.landmarks.build();
     this.scene.add(this.landmarks.group);
     this.life = new CityLife(this.landmarks.cities);
     this.scene.add(this.life.group);
-    this.scene.add(buildSettlements(this.terrain));
+    this.scene.add(buildSettlements(this.terrain, this.studPool));
 
     progress(82, 'Stacking terrain');
     await nextFrame();
@@ -249,6 +267,7 @@ export class Game {
     const preset = QUALITY_PRESETS[s.quality];
     this.field.setQuality(preset);
     this.field.setShadows(preset.shadows);
+    this.studPool.setEnabled(preset.studs);
     this.sun.castShadow = preset.shadows;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.maxDpr));
     this.audio.setEnabled(s.music, s.sfx);
@@ -326,7 +345,7 @@ export class Game {
 
     if (this.mode !== 'menu') {
       vTmp.copy(this.flight.pos).normalize();
-      this.field.update(dt, vTmp);
+      this.field.update(dt, vTmp, this.camera.position);
       this.rig.update(dt, this.camera, this.flight, this.flight.speed);
     } else {
       this.menuAngle += dt * 0.045;
@@ -352,6 +371,7 @@ export class Game {
       this.flight.speed
     );
     this.explosion.update(dt);
+    this.studPool.update(this.camera.position);
 
     // Environment
     const playerUp = vTmp.copy(this.mode === 'menu' ? this.camera.position : this.flight.pos).normalize();
@@ -405,33 +425,58 @@ export class Game {
   private updateLighting(): void {
     const day = this.sky.dayMix;
     const golden = this.sky.golden;
+    const anchor = this.mode === 'menu' ? this.camera.position : this.flight.pos;
+    vLightUp.copy(anchor).normalize();
+    vFillDir.copy(this.sky.sunDir).negate().addScaledVector(vLightUp, 0.32).normalize();
 
-    // A moonlight floor keeps the night readable instead of pitch black.
-    this.sun.intensity = 0.55 + day * 1.8;
+    // Product-shot key: warm and slightly golden. Night retains a restrained
+    // cool bias without losing the hard-plastic highlight response.
+    this.sun.intensity = 1.15 + day * 1.1;
     this.sun.color
-      .setHex(0xffffff)
-      .lerp(new THREE.Color(0xffb070), golden)
-      .lerp(new THREE.Color(0x93a7cc), (1 - day) * 0.7);
-    this.hemi.intensity = 0.42 + day * 0.55;
+      .setHex(0xffd29b)
+      .lerp(KEY_GOLDEN, golden * 0.72)
+      .lerp(KEY_NIGHT, (1 - day) * 0.55);
+
+    // The opposing cool fill is deliberately locked to 30% of the key. A low
+    // neutral ambient floor separates shadowed brick colours without flattening
+    // the seam AO.
+    this.fill.intensity = this.sun.intensity * 0.3;
+    this.fill.color.setHex(0x9ec9ff).lerp(FILL_NIGHT, (1 - day) * 0.35);
+    this.ambientLight.intensity = 0.22 + day * 0.08;
+    this.ambientLight.color.setHex(0x7f8da2).lerp(AMBIENT_NIGHT, 1 - day);
+
+    absAmbient.copy(this.ambientLight.color).multiplyScalar(this.ambientLight.intensity);
+    updateABSStudioLighting({
+      keyDirection: this.sky.sunDir,
+      keyColor: this.sun.color,
+      keyIntensity: this.sun.intensity,
+      fillDirection: vFillDir,
+      fillColor: this.fill.color,
+      fillIntensity: this.fill.intensity,
+      ambientColor: absAmbient
+    });
 
     // Distance haze: match the horizon tint, disabled for the menu's
     // from-space view of the whole planet.
     const menuView = this.mode === 'menu';
     this.fogNear = menuView ? 62000 : 2600;
-    this.fogFar = menuView ? 88000 : 22000;
+    this.fogFar = menuView ? 88000 : 34000;
     this.fogColor.copy(FOG_NIGHT).lerp(FOG_DAY, day).lerp(FOG_GOLDEN, golden * 0.5);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.fogColor);
     fog.near = this.fogNear;
     fog.far = this.fogFar;
 
-    const anchor = this.mode === 'menu' ? this.camera.position : this.flight.pos;
     if (this.sun.castShadow) {
       this.sun.position.copy(anchor).addScaledVector(this.sky.sunDir, 900);
       this.sun.target.position.copy(anchor);
+      this.fill.position.copy(anchor).addScaledVector(vFillDir, 720);
+      this.fill.target.position.copy(anchor);
     } else {
       this.sun.position.copy(this.sky.sunDir).multiplyScalar(PLANET_R * 3);
       this.sun.target.position.set(0, 0, 0);
+      this.fill.position.copy(vFillDir).multiplyScalar(PLANET_R * 3);
+      this.fill.target.position.set(0, 0, 0);
     }
   }
 

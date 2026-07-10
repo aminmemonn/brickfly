@@ -3,6 +3,7 @@ import { PLANET_R } from './constants';
 import { Terrain } from './terrain';
 import { LANDMARKS } from './landmark-data';
 import { latLonToDir, tangentBasis, hash2, DEG2RAD } from './util';
+import { createABSColoredMaterial } from './brick-material';
 
 /**
  * Fills the oceans so flying over water isn't dull: long luxury yachts towing
@@ -69,9 +70,9 @@ export class SeaLife {
 
   constructor(terrain: Terrain) {
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const mats = new Map<number, THREE.MeshStandardMaterial>();
+    const mats = new Map<number, THREE.ShaderMaterial>();
     const mat = (c: number) => {
-      if (!mats.has(c)) mats.set(c, new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: 0.05 }));
+      if (!mats.has(c)) mats.set(c, createABSColoredMaterial(c));
       return mats.get(c)!;
     };
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { basisQuat } from './util';
+import { ABS_SOLID_MATERIAL, createABSColoredMaterial } from './brick-material';
 
 /** A city's local frame on the sphere, produced by LandmarkManager. */
 export interface CityFrame {
@@ -76,8 +77,8 @@ export class CityLife {
   constructor(cities: CityFrame[]) {
     const box = new THREE.BoxGeometry(1, 1, 1);
     const headGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.72, 8);
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.05 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.4 });
+    const mat = ABS_SOLID_MATERIAL;
+    const skinMat = createABSColoredMaterial(SKIN);
 
     const carFrames = cities.filter((c) => c.ring > 0);
     const peopleFrames = cities.filter((c) => c.plaza > 0);

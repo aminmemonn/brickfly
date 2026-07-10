@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { PLANET_R, BRICK_H } from './constants';
+import { PLANET_R, BRICK_H, STUD_PITCH } from './constants';
 import { Terrain } from './terrain';
 import { LANDMARKS } from './landmark-data';
-import { latLonToDir, tangentBasis, basisQuat, makeAOBox, clamp, DEG2RAD } from './util';
+import { latLonToDir, tangentBasis, basisQuat, clamp, DEG2RAD } from './util';
+import { ABS_BRICK_MATERIAL, makeABSBrickGeometry, makeStudGridAttribute } from './brick-material';
+import { BrickStudPool, studCountForSpan } from './brick-stud-pool';
 
 const MAX_BRICKS = 40000;
 const MAX_GLOW = 7000;
@@ -27,17 +29,16 @@ function mulberry(seed: number): () => number {
  * every continent so the globe never feels empty between landmarks.
  * Everything is two static instanced draws plus one glow draw.
  */
-export function buildSettlements(terrain: Terrain): THREE.Group {
+export function buildSettlements(terrain: Terrain, studPool: BrickStudPool): THREE.Group {
   const group = new THREE.Group();
   const rand = mulberry(20260703);
 
   const landmarkDirs = LANDMARKS.map((lm) => latLonToDir(lm.lat * DEG2RAD, lm.lon * DEG2RAD));
 
-  const bricks = new THREE.InstancedMesh(
-    makeAOBox(),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.04 }),
-    MAX_BRICKS
-  );
+  const brickGeometry = makeABSBrickGeometry();
+  const studGrid = makeStudGridAttribute(MAX_BRICKS);
+  brickGeometry.setAttribute('instanceStudGrid', studGrid);
+  const bricks = new THREE.InstancedMesh(brickGeometry, ABS_BRICK_MATERIAL, MAX_BRICKS);
   const glow = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshBasicMaterial(),
@@ -57,6 +58,10 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
   const m = new THREE.Matrix4();
   const col = new THREE.Color();
   const Y = new THREE.Vector3(0, 1, 0);
+  const topCenter = new THREE.Vector3();
+  const studAxisX = new THREE.Vector3();
+  const studAxisY = new THREE.Vector3();
+  const studAxisZ = new THREE.Vector3();
 
   let bi = 0;
   let gi = 0;
@@ -89,6 +94,28 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
       if (bi >= MAX_BRICKS) return;
       bricks.setMatrixAt(bi, m);
       bricks.setColorAt(bi, col.setHex(color));
+      const nx = studCountForSpan(w, STUD_PITCH);
+      const nz = studCountForSpan(d, STUD_PITCH);
+      if (nx > 0 && nz > 0) {
+        studGrid.setXY(bi, nx, nz);
+        topCenter.copy(pos).addScaledVector(dir, h / 2);
+        studAxisX.set(1, 0, 0).applyQuaternion(qf);
+        studAxisY.set(0, 1, 0).applyQuaternion(qf);
+        studAxisZ.set(0, 0, 1).applyQuaternion(qf);
+        studPool.registerSurface({
+          center: topCenter,
+          axisX: studAxisX,
+          axisY: studAxisY,
+          axisZ: studAxisZ,
+          width: w,
+          depth: d,
+          bodyHeight: h,
+          pitch: STUD_PITCH,
+          color: col
+        });
+      } else {
+        studGrid.setXY(bi, 0, 0);
+      }
       bi++;
     }
   };
@@ -165,6 +192,7 @@ export function buildSettlements(terrain: Terrain): THREE.Group {
   bricks.count = bi;
   glow.count = gi;
   bricks.instanceMatrix.needsUpdate = true;
+  studGrid.needsUpdate = true;
   glow.instanceMatrix.needsUpdate = true;
   if (bricks.instanceColor) bricks.instanceColor.needsUpdate = true;
   if (glow.instanceColor) glow.instanceColor.needsUpdate = true;

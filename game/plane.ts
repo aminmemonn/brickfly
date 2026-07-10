@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STUD_R, STUD_H } from './constants';
+import { createABSColoredMaterial, makeABSBrickGeometry } from './brick-material';
 
 const COLORS = {
   red: 0xd6382c,
@@ -9,22 +9,30 @@ const COLORS = {
   glass: 0x9fd6ff
 };
 
-const matCache = new Map<number, THREE.MeshStandardMaterial>();
+const PLANE_STUD_PITCH = 1.7;
+const PLANE_BRICK_H = PLANE_STUD_PITCH / 1.6;
+const PLANE_STUD_R = (PLANE_STUD_PITCH * 0.6) / 2;
+const PLANE_STUD_H = PLANE_BRICK_H * 0.3;
 
-function mat(color: number, opts: { transparent?: boolean; opacity?: number } = {}): THREE.MeshStandardMaterial {
+const matCache = new Map<number, THREE.ShaderMaterial>();
+
+function mat(color: number, opts: { transparent?: boolean; opacity?: number } = {}): THREE.Material {
   if (!opts.transparent && matCache.has(color)) return matCache.get(color)!;
-  const m = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.32,
-    metalness: 0.05,
-    transparent: opts.transparent ?? false,
-    opacity: opts.opacity ?? 1
-  });
-  if (!opts.transparent) matCache.set(color, m);
-  return m;
+  if (opts.transparent) {
+    return new THREE.MeshPhongMaterial({
+      color,
+      specular: 0xddeeff,
+      shininess: 100,
+      transparent: true,
+      opacity: opts.opacity ?? 1
+    });
+  }
+  const material = createABSColoredMaterial(color);
+  matCache.set(color, material);
+  return material;
 }
 
-const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const boxGeo = makeABSBrickGeometry();
 
 function box(
   parent: THREE.Object3D,
@@ -41,6 +49,7 @@ function box(
   mesh.scale.set(w, h, d);
   mesh.position.set(x, y, z);
   mesh.castShadow = !opts.transparent;
+  mesh.receiveShadow = !opts.transparent;
   parent.add(mesh);
   return mesh;
 }
@@ -111,13 +120,13 @@ export class BrickPlane {
     const spots: [number, number, number][] = [];
     for (const side of [-1, 1]) {
       for (let i = 0; i < 3; i++) {
-        spots.push([side * (3.4 + i * 1.7), 1.32, -1.2]);
-        spots.push([side * (3.4 + i * 1.7), 1.32, 0]);
+        spots.push([side * (3.4 + i * PLANE_STUD_PITCH), 1.25 + PLANE_STUD_H / 2, -1.2]);
+        spots.push([side * (3.4 + i * PLANE_STUD_PITCH), 1.25 + PLANE_STUD_H / 2, 0]);
       }
     }
-    for (let i = 0; i < 3; i++) spots.push([0, 1.38, 1.6 + i * 1.2]);
+    for (let i = 0; i < 3; i++) spots.push([0, 1.3 + PLANE_STUD_H / 2, 1.6 + i * 1.2]);
 
-    const geo = new THREE.CylinderGeometry(STUD_R * 0.42, STUD_R * 0.42, STUD_H * 0.5, 10);
+    const geo = new THREE.CylinderGeometry(PLANE_STUD_R, PLANE_STUD_R, PLANE_STUD_H, 16);
     const studs = new THREE.InstancedMesh(geo, mat(COLORS.white), spots.length);
     const m = new THREE.Matrix4();
     spots.forEach((s, i) => {
@@ -125,6 +134,7 @@ export class BrickPlane {
       studs.setMatrixAt(i, m);
     });
     studs.castShadow = true;
+    studs.receiveShadow = true;
     this.group.add(studs);
   }
 
