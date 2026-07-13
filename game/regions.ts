@@ -11,10 +11,12 @@ interface RegionDef {
 
 const CITIES: RegionDef[] = [
   { name: 'Paris', lat: 48.86, lon: 2.29, r: 0.035 },
-  { name: 'London', lat: 51.5, lon: -0.12, r: 0.035 },
+  // London and Rome match their landmark positions on this globe (Brick
+  // Britain sailed north-west so Paris and London are a real flight apart).
+  { name: 'London', lat: 60, lon: -18, r: 0.045 },
   { name: 'New York', lat: 40.71, lon: -74.0, r: 0.04 },
   { name: 'Tokyo', lat: 35.68, lon: 139.7, r: 0.04 },
-  { name: 'Rome', lat: 41.9, lon: 12.5, r: 0.032 },
+  { name: 'Rome', lat: 40, lon: 17, r: 0.04 },
   { name: 'Sydney', lat: -33.86, lon: 151.2, r: 0.04 },
   { name: 'Dubai', lat: 25.2, lon: 55.3, r: 0.035 },
   { name: 'Cairo', lat: 30.04, lon: 31.24, r: 0.035 },
@@ -32,10 +34,10 @@ const CITIES: RegionDef[] = [
 
 const COUNTRIES: RegionDef[] = [
   { name: 'France', lat: 47, lon: 2, r: 0.075 },
-  { name: 'United Kingdom', lat: 54, lon: -2, r: 0.07 },
+  { name: 'United Kingdom', lat: 60, lon: -18, r: 0.1 },
   { name: 'Spain', lat: 40, lon: -4, r: 0.075 },
   { name: 'Germany', lat: 51, lon: 10, r: 0.06 },
-  { name: 'Italy', lat: 43, lon: 12, r: 0.07 },
+  { name: 'Italy', lat: 41, lon: 15.5, r: 0.08 },
   { name: 'Scandinavia', lat: 63, lon: 15, r: 0.11 },
   { name: 'Greece', lat: 39, lon: 22, r: 0.05 },
   { name: 'Turkey', lat: 39, lon: 35, r: 0.08 },

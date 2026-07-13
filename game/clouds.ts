@@ -11,11 +11,11 @@ function seeded(seed: number): () => number {
 }
 
 /** Chunky brick-cluster clouds drifting slowly around the planet. */
-export function buildClouds(count = 64): THREE.Group {
+export function buildClouds(count = 150): THREE.Group {
   const group = new THREE.Group();
   const rand = seeded(99);
 
-  const boxes: { pos: THREE.Vector3; quat: THREE.Quaternion; scale: THREE.Vector3 }[] = [];
+  const boxes: { pos: THREE.Vector3; quat: THREE.Quaternion; scale: THREE.Vector3; tint: number }[] = [];
   const up = new THREE.Vector3();
   const east = new THREE.Vector3();
   const north = new THREE.Vector3();
@@ -30,14 +30,20 @@ export function buildClouds(count = 64): THREE.Group {
     tangentBasis(up, east, north);
     basisQuat(east, up, north, q);
 
-    const alt = PLANET_R + 340 + rand() * 260;
+    // Layered deck: low cumulus, mid puffs, high thin wisps; a few grey
+    // rain-bellied clusters for variety.
+    const layer = rand();
+    const alt = PLANET_R + 320 + layer * 520;
+    const grey = rand() > 0.85 ? 0.72 : 0.95 + rand() * 0.05;
     const center = up.clone().multiplyScalar(alt);
-    const parts = 4 + Math.floor(rand() * 7);
+    const big = rand() > 0.6;
+    const parts = big ? 6 + Math.floor(rand() * 7) : 3 + Math.floor(rand() * 4);
+    const spread = big ? 170 : 100;
     for (let p = 0; p < parts; p++) {
-      const ox = (rand() - 0.5) * 120;
-      const oz = (rand() - 0.5) * 75;
-      const oy = (rand() - 0.5) * 16;
-      const w = 26 + rand() * 46;
+      const ox = (rand() - 0.5) * spread;
+      const oz = (rand() - 0.5) * spread * 0.62;
+      const oy = (rand() - 0.5) * 18;
+      const w = (big ? 30 : 22) + rand() * 52;
       const pos = center
         .clone()
         .addScaledVector(east, ox)
@@ -46,7 +52,8 @@ export function buildClouds(count = 64): THREE.Group {
       boxes.push({
         pos,
         quat: q.clone(),
-        scale: new THREE.Vector3(w, 9 + rand() * 8, w * (0.55 + rand() * 0.4))
+        scale: new THREE.Vector3(w, (layer > 0.75 ? 5 : 9) + rand() * 8, w * (0.55 + rand() * 0.4)),
+        tint: grey
       });
     }
   }
@@ -62,11 +69,14 @@ export function buildClouds(count = 64): THREE.Group {
   });
   const mesh = new THREE.InstancedMesh(makeAOBox(), mat, boxes.length);
   const m = new THREE.Matrix4();
+  const col = new THREE.Color();
   boxes.forEach((b, i) => {
     m.compose(b.pos, b.quat, b.scale);
     mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, col.setScalar(b.tint));
   });
   mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.frustumCulled = false;
 
   group.add(mesh);

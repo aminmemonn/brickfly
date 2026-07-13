@@ -22,7 +22,7 @@ import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
 import { buildSettlements } from './settlements';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
-import { dirToLatLon, RAD2DEG } from './util';
+import { dirToLatLon, RAD2DEG, DEG2RAD } from './util';
 import { updateABSStudioLighting } from './brick-material';
 import { BrickStudPool } from './brick-stud-pool';
 
@@ -43,7 +43,7 @@ const FOG_GOLDEN = new THREE.Color(0xffb27a);
 const KEY_GOLDEN = new THREE.Color(0xffae68);
 const KEY_NIGHT = new THREE.Color(0x9fb6dc);
 const FILL_NIGHT = new THREE.Color(0x7189bb);
-const AMBIENT_NIGHT = new THREE.Color(0x52627c);
+const AMBIENT_NIGHT = new THREE.Color(0x64759c);
 
 export class Game {
   mode: GameMode = 'boot';
@@ -218,10 +218,11 @@ export class Game {
     if (at) {
       const def = LANDMARKS.find((lm) => lm.id === at);
       if (def) {
-        // Arrive proportionally farther out and higher for bigger landmarks so
-        // the whole skyline is in view instead of spawning inside it.
+        // Arrive a fixed world distance out (not degrees, which balloon at
+        // high latitudes) and high enough to clear the tallest builds.
         const s = landmarkScale(def.id);
-        this.flight.reset(def.lat, def.lon - 2.0 * s, 90, 150 + 120 * s);
+        const offLon = (900 + 260 * s) / (PLANET_R * DEG2RAD * Math.cos(def.lat * DEG2RAD));
+        this.flight.reset(def.lat, def.lon - offLon, 90, 200 + 130 * s);
       }
     }
     this.mode = 'playing';
@@ -442,7 +443,9 @@ export class Game {
     // the seam AO.
     this.fill.intensity = this.sun.intensity * 0.3;
     this.fill.color.setHex(0x9ec9ff).lerp(FILL_NIGHT, (1 - day) * 0.35);
-    this.ambientLight.intensity = 0.22 + day * 0.08;
+    // Night keeps a readable moonlit floor: facades stay visible as blue-grey
+    // silhouettes behind the neon instead of vanishing into black.
+    this.ambientLight.intensity = 0.34 + day * 0.05;
     this.ambientLight.color.setHex(0x7f8da2).lerp(AMBIENT_NIGHT, 1 - day);
 
     absAmbient.copy(this.ambientLight.color).multiplyScalar(this.ambientLight.intensity);

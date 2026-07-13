@@ -21,8 +21,8 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 48.858,
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
-    radius: 3400,
-    flat: 2100,
+    radius: 3000,
+    flat: 1700,
     plateau: 10
   },
   {
@@ -89,11 +89,13 @@ export const LANDMARKS: LandmarkDef[] = [
     id: 'colosseum',
     name: 'Colosseum',
     location: 'Rome, Italy',
-    lat: 41.89,
-    lon: 12.492,
+    // Nudged from the real coordinates so Rome, Paris and Giza sit a proper
+    // flight apart on this planet instead of sharing suburbs.
+    lat: 40,
+    lon: 17,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
-    radius: 3400,
-    flat: 2000,
+    radius: 2400,
+    flat: 1700,
     plateau: 10
   },
   {
@@ -122,11 +124,14 @@ export const LANDMARKS: LandmarkDef[] = [
     id: 'bigben',
     name: 'Big Ben',
     location: 'London, UK',
-    lat: 51.5,
-    lon: -0.124,
+    // Real-world London is only ~750 units from Paris at this planet radius —
+    // the two cities physically overlapped. Brick Britain sails north-west so
+    // the Channel crossing is an actual flight (~4000 units).
+    lat: 60,
+    lon: -18,
     fact: 'The clock tower of Westminster in warm tan brick. It is always brick o’clock somewhere.',
-    radius: 3400,
-    flat: 2000,
+    radius: 2400,
+    flat: 1500,
     plateau: 8
   },
   {

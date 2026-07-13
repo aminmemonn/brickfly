@@ -69,6 +69,76 @@ function galaxyTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * A hand-drawn sun: white-hot core, warm corona and twelve soft rays, so the
+ * star reads as an actual celestial body instead of a shader smudge.
+ */
+function sunTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d')!;
+  const c = S / 2;
+
+  ctx.save();
+  ctx.translate(c, c);
+  for (let i = 0; i < 12; i++) {
+    ctx.rotate(Math.PI / 6);
+    const ray = ctx.createLinearGradient(0, 0, S * 0.48, 0);
+    ray.addColorStop(0, 'rgba(255, 238, 190, 0.30)');
+    ray.addColorStop(1, 'rgba(255, 238, 190, 0)');
+    ctx.fillStyle = ray;
+    ctx.beginPath();
+    ctx.moveTo(0, -S * 0.018);
+    ctx.lineTo(S * 0.48, -S * 0.055);
+    ctx.lineTo(S * 0.48, S * 0.055);
+    ctx.lineTo(0, S * 0.018);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  const halo = ctx.createRadialGradient(c, c, 0, c, c, S * 0.5);
+  halo.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  halo.addColorStop(0.16, 'rgba(255, 246, 210, 0.96)');
+  halo.addColorStop(0.3, 'rgba(255, 216, 132, 0.45)');
+  halo.addColorStop(0.55, 'rgba(255, 182, 92, 0.15)');
+  halo.addColorStop(1, 'rgba(255, 160, 70, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(c, c, S * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** A soft horizontal streak used for shooting stars. */
+function streakTexture(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 32;
+  const ctx = cv.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.75, 'rgba(220,235,255,0.55)');
+  grad.addColorStop(0.97, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 10, 256, 12);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+interface ShootingStar {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+  vel: THREE.Vector3;
+  life: number;
+}
+
 const VERT = /* glsl */ `
 varying vec3 vDir;
 void main() {
@@ -99,10 +169,12 @@ void main() {
 
   vec3 col = mix(horizon, zenith, pow(t, 1.35));
 
+  // The drawn sun sprite carries the disc itself; the shader only supplies
+  // the atmospheric glow around it.
   float sunDot = max(dot(vDir, uSun), 0.0);
   vec3 sunColor = mix(vec3(1.0, 0.97, 0.9), vec3(1.0, 0.58, 0.28), uGolden);
-  col += sunColor * pow(sunDot, 350.0) * 2.4 * max(uDay, 0.08);
-  col += sunColor * pow(sunDot, 9.0) * 0.28 * max(uDay, 0.05);
+  col += sunColor * pow(sunDot, 350.0) * 1.2 * max(uDay, 0.08);
+  col += sunColor * pow(sunDot, 9.0) * 0.3 * max(uDay, 0.05);
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -131,7 +203,13 @@ export class Sky {
   private moonGlowMat: THREE.MeshBasicMaterial;
   private galaxy: THREE.Mesh;
   private galaxyMat: THREE.MeshBasicMaterial;
+  private sunSprite: THREE.Sprite;
+  private sunMat: THREE.SpriteMaterial;
+  private shooters: ShootingStar[] = [];
+  private shootTimer = 3;
   private time = 4;
+  // Photo mode: ?night pins the world to full night (stargazing, screenshots).
+  private forceNight = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('night');
 
   constructor() {
     this.uniforms = {
@@ -241,6 +319,54 @@ export class Sky {
     this.galaxy.frustumCulled = false;
     this.galaxy.renderOrder = -9;
     this.group.add(this.galaxy);
+
+    // The sun itself: an additive drawn sprite that swells and warms at the
+    // golden hour.
+    this.sunMat = new THREE.SpriteMaterial({
+      map: sunTexture(),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false
+    });
+    this.sunSprite = new THREE.Sprite(this.sunMat);
+    this.sunSprite.frustumCulled = false;
+    this.sunSprite.renderOrder = -8;
+    this.group.add(this.sunSprite);
+
+    // A small pool of shooting stars that streak across clear nights.
+    const streakTex = streakTexture();
+    for (let i = 0; i < 3; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: streakTex,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SKY_RADIUS * 0.14, SKY_RADIUS * 0.008), mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = -8;
+      this.group.add(mesh);
+      this.shooters.push({ mesh, mat, vel: new THREE.Vector3(), life: 0 });
+    }
+  }
+
+  /** Launch one pooled shooting star from a random point high in the sky. */
+  private spawnShooter(playerUp: THREE.Vector3): void {
+    const idle = this.shooters.find((s) => s.life <= 0);
+    if (!idle) return;
+    const dir = new THREE.Vector3().randomDirection();
+    if (dir.dot(playerUp) < 0.3) dir.negate();
+    if (dir.dot(playerUp) < 0.3) return; // grazing spawn — skip this cycle
+    idle.mesh.position.copy(dir).multiplyScalar(SKY_RADIUS * 0.86);
+    idle.vel.randomDirection().cross(dir).normalize().multiplyScalar(SKY_RADIUS * (0.45 + Math.random() * 0.3));
+    idle.life = 0.9;
+    idle.mesh.visible = true;
   }
 
   update(dt: number, camPos: THREE.Vector3, playerUp: THREE.Vector3): void {
@@ -252,6 +378,10 @@ export class Sky {
     const sunUp = this.sunDir.dot(playerUp);
     this.dayMix = smoothstep(-0.14, 0.24, sunUp);
     this.golden = clamp(1 - Math.abs(sunUp) * 3.2, 0, 1) * this.dayMix;
+    if (this.forceNight) {
+      this.dayMix = 0;
+      this.golden = 0;
+    }
 
     this.group.position.copy(camPos);
     this.uniforms.uUp.value.copy(camPos).normalize();
@@ -273,5 +403,45 @@ export class Sky {
     const moonUp = clamp(-this.sunDir.dot(playerUp) + 0.3, 0, 1);
     this.moonMat.opacity = lerp(0.15, 1, night) * clamp(moonUp * 2, 0, 1);
     this.moonGlowMat.opacity = this.moonMat.opacity * 0.45;
+
+    // The drawn sun: swells and reddens toward the horizon at golden hour.
+    this.sunSprite.position.copy(this.sunDir).multiplyScalar(SKY_RADIUS * 0.88);
+    const sunSize = SKY_RADIUS * 0.15 * (1 + this.golden * 0.85);
+    this.sunSprite.scale.set(sunSize, sunSize, 1);
+    this.sunMat.color.setHex(0xffffff).lerp(SUN_GOLDEN, this.golden * 0.85);
+    this.sunMat.opacity = clamp(this.dayMix * 1.4, 0, 1);
+
+    // Shooting stars streak across deep night.
+    if (night > 0.55) {
+      this.shootTimer -= dt;
+      if (this.shootTimer <= 0) {
+        this.shootTimer = 2.5 + Math.random() * 5;
+        this.spawnShooter(playerUp);
+      }
+    }
+    for (const s of this.shooters) {
+      if (s.life <= 0) continue;
+      s.life -= dt;
+      if (s.life <= 0) {
+        s.mesh.visible = false;
+        s.mat.opacity = 0;
+        continue;
+      }
+      s.mesh.position.addScaledVector(s.vel, dt);
+      // Long axis along the motion, face angled back toward the viewer.
+      shootX.copy(s.vel).normalize();
+      shootZ.copy(s.mesh.position).multiplyScalar(-1).normalize();
+      shootZ.addScaledVector(shootX, -shootX.dot(shootZ)).normalize();
+      shootY.crossVectors(shootZ, shootX);
+      shootMat.makeBasis(shootX, shootY, shootZ);
+      s.mesh.quaternion.setFromRotationMatrix(shootMat);
+      s.mat.opacity = Math.sin((s.life / 0.9) * Math.PI) * night;
+    }
   }
 }
+
+const SUN_GOLDEN = new THREE.Color(0xff8a4a);
+const shootX = new THREE.Vector3();
+const shootY = new THREE.Vector3();
+const shootZ = new THREE.Vector3();
+const shootMat = new THREE.Matrix4();

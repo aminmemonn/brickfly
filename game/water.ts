@@ -14,7 +14,8 @@ void main() {
   vec3 p = position;
   float w1 = sin(uTime * 1.4 + position.x * 0.015 + position.z * 0.011);
   float w2 = cos(uTime * 1.1 + position.y * 0.017 + position.x * 0.009);
-  p += normal * (w1 + w2) * 1.2;
+  float chop = sin(uTime * 2.3 + position.x * 0.031 + position.y * 0.027);
+  p += normal * ((w1 + w2) * 1.7 + chop * 0.6);
   vec4 wp = modelMatrix * vec4(p, 1.0);
   vWorldPos = wp.xyz;
   vNormal = normalize(normalMatrix * normal);
@@ -70,7 +71,20 @@ void main() {
   float spec = pow(max(dot(R, V), 0.0), 90.0);
   col += vec3(1.0, 0.93, 0.78) * spec * 0.85 * uDay;
 
-  col *= 0.16 + 0.84 * uDay;
+  // Diamond glitter dancing inside the sun path.
+  float sp = sin(vWorldPos.x * 0.9 + uTime * 3.0)
+    * sin(vWorldPos.z * 0.83 - uTime * 2.6)
+    * sin(vWorldPos.y * 0.87 + uTime * 2.2);
+  float glitter = smoothstep(0.965, 1.0, sp) * pow(max(dot(R, V), 0.0), 3.0);
+  col += vec3(1.0, 0.98, 0.9) * glitter * 1.5 * uDay;
+
+  // Moon path shimmering across the night sea (the moon rides opposite the sun).
+  vec3 Rm = reflect(uSun, N);
+  float moonSpec = pow(max(dot(Rm, V), 0.0), 70.0);
+  col += vec3(0.62, 0.74, 1.0) * moonSpec * 0.55 * (1.0 - uDay);
+  col += vec3(0.75, 0.85, 1.0) * glitter * 0.5 * (1.0 - uDay);
+
+  col *= 0.24 + 0.76 * uDay;
 
   float fogF = smoothstep(uFogNear, uFogFar, length(cameraPosition - vWorldPos));
   col = mix(col, uFogColor, fogF);

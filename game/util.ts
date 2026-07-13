@@ -83,3 +83,35 @@ export function makeAOBox(): THREE.BoxGeometry {
 export function curvatureDrop(x: number, z: number): number {
   return (x * x + z * z) / (2 * PLANET_R);
 }
+
+const mapUp = new THREE.Vector3();
+
+/**
+ * Exact spherical mapping of a tangent-frame point. Treats local (x, z) as
+ * arc-length coordinates on a sphere of radius `r` whose surface passes
+ * through the local origin, and `y` as height above that surface. Writes the
+ * curved position to `outPos` and (optionally) the tilt that re-aligns local
+ * +Y with the sphere normal to `outTilt`. Unlike curvatureDrop, this also
+ * fixes ORIENTATION: without the tilt, tall objects far from a city's anchor
+ * lean off vertical (≈ dist/r radians — 14° at Manhattan's island tips).
+ */
+export function sphereMap(
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  outPos: THREE.Vector3,
+  outTilt?: THREE.Quaternion
+): void {
+  const rho = Math.hypot(x, z);
+  if (rho < 1e-6) {
+    outPos.set(0, y, 0);
+    if (outTilt) outTilt.identity();
+    return;
+  }
+  const s = Math.sin(rho / r) / rho;
+  mapUp.set(x * s, Math.cos(rho / r), z * s);
+  outPos.copy(mapUp).multiplyScalar(r + y);
+  outPos.y -= r;
+  if (outTilt) outTilt.setFromUnitVectors(Y_AXIS, mapUp);
+}

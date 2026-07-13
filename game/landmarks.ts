@@ -3,7 +3,7 @@ import { PLANET_R, BRICK_H, STUD_PITCH } from './constants';
 import { CityFrame } from './life';
 import { Terrain } from './terrain';
 import { LANDMARKS, LandmarkDef } from './landmark-data';
-import { latLonToDir, tangentBasis, basisQuat, curvatureDrop, clamp, hash2, DEG2RAD } from './util';
+import { latLonToDir, tangentBasis, basisQuat, sphereMap, hash2, DEG2RAD } from './util';
 import { NYC_AD_TOWERS, createAdScreens, AdScreens, AdTower } from './adscreens';
 import { bus } from './bus';
 import { ABS_BRICK_MATERIAL, makeABSBrickGeometry, makeStudGridAttribute } from './brick-material';
@@ -19,12 +19,12 @@ const DISCOVERED_KEY = 'brickfly.discovered';
 export const LANDMARK_SCALE: Record<string, number> = {
   nyc: 3.4,
   eiffel: 8.0,
-  bigben: 7.5,
-  colosseum: 7.5,
+  bigben: 8.5,
+  colosseum: 9.0,
   taj: 6.0,
   sydney: 6.0,
-  burj: 5.0,
-  giza: 4.5,
+  burj: 5.5,
+  giza: 6.0,
   fuji: 3.4,
   cali: 3.4,
   wall: 1.6
@@ -45,17 +45,37 @@ interface BrickSpec {
   ry: number;
   studs: boolean;
   glow: boolean;
+  beam: boolean;
 }
 
 const sharedGlowGeo = new THREE.BoxGeometry(1, 1, 1);
 const glowMat = new THREE.MeshBasicMaterial();
+// Volumetric-looking light columns (pyramid beams, spotlights): additive and
+// translucent so they read as light, not plastic.
+const beamMat = new THREE.MeshBasicMaterial({
+  transparent: true,
+  opacity: 0.3,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  fog: false
+});
 
-/** Collects axis-aligned (plus Y-rotated) bricks in a local tangent frame. */
+/**
+ * Collects axis-aligned (plus Y-rotated) bricks in a local tangent frame.
+ * At build time every brick is mapped EXACTLY onto the sphere: positioned on
+ * the curved surface and tilted to the local normal. A single tangent frame
+ * for a city the size of Manhattan otherwise leaves towers at the far ends
+ * leaning ~14 degrees off vertical (the "tilted city" bug).
+ */
 class Bricks {
   list: BrickSpec[] = [];
   /** Group scale this brickset will be rendered at, so the sphere-curvature
-   *  compensation is applied for the final world size, not the local size. */
+   *  mapping is applied for the final world size, not the local size. */
   curveScale = 1;
+
+  private get localR(): number {
+    return PLANET_R / this.curveScale;
+  }
 
   add(
     x: number,
@@ -65,11 +85,11 @@ class Bricks {
     h: number,
     d: number,
     color: number,
-    opts: { ry?: number; studs?: boolean; glow?: boolean } = {}
+    opts: { ry?: number; studs?: boolean; glow?: boolean; beam?: boolean } = {}
   ): void {
     this.list.push({
       x,
-      y: y - curvatureDrop(x, z) * this.curveScale,
+      y,
       z,
       w,
       h,
@@ -77,34 +97,42 @@ class Bricks {
       color,
       ry: opts.ry ?? 0,
       studs: opts.studs ?? false,
-      glow: opts.glow ?? false
+      glow: opts.glow ?? false,
+      beam: opts.beam ?? false
     });
   }
 
   build(): THREE.Group {
     const group = new THREE.Group();
-    const solid = this.list.filter((b) => !b.glow);
+    const solid = this.list.filter((b) => !b.glow && !b.beam);
     const glows = this.list.filter((b) => b.glow);
+    const beams = this.list.filter((b) => b.beam);
     const brickGeometry = makeABSBrickGeometry();
     const studGrid = makeStudGridAttribute(solid.length);
     brickGeometry.setAttribute('instanceStudGrid', studGrid);
     const bricks = new THREE.InstancedMesh(brickGeometry, ABS_BRICK_MATERIAL, solid.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
+    const qTilt = new THREE.Quaternion();
     const e = new THREE.Euler();
     const pos = new THREE.Vector3();
     const scale = new THREE.Vector3();
     const col = new THREE.Color();
+    const r = this.localR;
 
-    solid.forEach((b, i) => {
+    const place = (mesh: THREE.InstancedMesh, b: BrickSpec, i: number) => {
       e.set(0, b.ry, 0);
       q.setFromEuler(e);
-      pos.set(b.x, b.y + b.h / 2, b.z);
+      sphereMap(b.x, b.y + b.h / 2, b.z, r, pos, qTilt);
+      q.premultiply(qTilt);
       scale.set(b.w, b.h, b.d);
       m.compose(pos, q, scale);
-      bricks.setMatrixAt(i, m);
-      bricks.setColorAt(i, col.setHex(b.color));
+      mesh.setMatrixAt(i, m);
+      mesh.setColorAt(i, col.setHex(b.color));
+    };
 
+    solid.forEach((b, i) => {
+      place(bricks, b, i);
       const nx = studCountForSpan(b.w, STUD_PITCH);
       const nz = studCountForSpan(b.d, STUD_PITCH);
       studGrid.setXY(i, nx > 0 && nz > 0 ? nx : 0, nx > 0 && nz > 0 ? nz : 0);
@@ -119,18 +147,18 @@ class Bricks {
 
     if (glows.length > 0) {
       const glow = new THREE.InstancedMesh(sharedGlowGeo, glowMat, glows.length);
-      glows.forEach((b, i) => {
-        e.set(0, b.ry, 0);
-        q.setFromEuler(e);
-        pos.set(b.x, b.y + b.h / 2, b.z);
-        scale.set(b.w, b.h, b.d);
-        m.compose(pos, q, scale);
-        glow.setMatrixAt(i, m);
-        glow.setColorAt(i, col.setHex(b.color));
-      });
+      glows.forEach((b, i) => place(glow, b, i));
       glow.instanceMatrix.needsUpdate = true;
       if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
       group.add(glow);
+    }
+
+    if (beams.length > 0) {
+      const beam = new THREE.InstancedMesh(sharedGlowGeo, beamMat, beams.length);
+      beams.forEach((b, i) => place(beam, b, i));
+      beam.instanceMatrix.needsUpdate = true;
+      if (beam.instanceColor) beam.instanceColor.needsUpdate = true;
+      group.add(beam);
     }
 
     return group;
@@ -141,6 +169,7 @@ class Bricks {
     const worldScale = new THREE.Vector3();
     const groupQuaternion = new THREE.Quaternion();
     const localQuaternion = new THREE.Quaternion();
+    const tiltQuaternion = new THREE.Quaternion();
     const worldQuaternion = new THREE.Quaternion();
     const topCenter = new THREE.Vector3();
     const axisX = new THREE.Vector3();
@@ -148,20 +177,22 @@ class Bricks {
     const axisZ = new THREE.Vector3();
     const color = new THREE.Color();
     const yAxis = new THREE.Vector3(0, 1, 0);
+    const r = this.localR;
     group.getWorldScale(worldScale);
     group.getWorldQuaternion(groupQuaternion);
 
     for (const brick of this.list) {
-      if (brick.glow) continue;
+      if (brick.glow || brick.beam) continue;
       const nx = studCountForSpan(brick.w, STUD_PITCH);
       const nz = studCountForSpan(brick.d, STUD_PITCH);
       if (nx === 0 || nz === 0) continue;
       localQuaternion.setFromAxisAngle(yAxis, brick.ry);
-      worldQuaternion.copy(groupQuaternion).multiply(localQuaternion);
+      sphereMap(brick.x, brick.y + brick.h, brick.z, r, topCenter, tiltQuaternion);
+      worldQuaternion.copy(groupQuaternion).multiply(tiltQuaternion).multiply(localQuaternion);
       axisX.set(1, 0, 0).applyQuaternion(worldQuaternion);
       axisY.set(0, 1, 0).applyQuaternion(worldQuaternion);
       axisZ.set(0, 0, 1).applyQuaternion(worldQuaternion);
-      topCenter.set(brick.x, brick.y + brick.h, brick.z).applyMatrix4(group.matrixWorld);
+      topCenter.applyMatrix4(group.matrixWorld);
       pool.registerSurface({
         center: topCenter,
         axisX,
@@ -192,7 +223,15 @@ interface CityStyle {
   glow?: boolean;
 }
 
-const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; plaza: number; groundY: number } }> = {
+const CITY_CONFIGS: Record<
+  string,
+  {
+    style?: CityStyle;
+    frame?: { ring: number; plaza: number; groundY: number };
+    /** Landmark builds its own bespoke downtown; skip the generic ring city. */
+    custom?: { rInner: number; avoid?: (x: number, z: number) => boolean };
+  }
+> = {
   eiffel: {
     style: {
       walls: [0xe8dcc0, 0xddd0b0, 0xf0e6d2],
@@ -205,7 +244,15 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       perRing: [10, 13],
       trees: 12
     },
-    frame: { ring: 60, plaza: 42, groundY: 1.4 }
+    frame: { ring: 60, plaza: 42, groundY: 1.4 },
+    custom: {
+      rInner: 158,
+      avoid: (x, z) =>
+        Math.abs(z + 150) < 26 || // the Seine
+        (Math.abs(x) < 44 && z > 55 && z < 215) || // Champ de Mars lawn
+        Math.hypot(x + 165, z - 70) < 46 || // Arc de Triomphe circle
+        Math.hypot(x - 150, z + 195) < 62 // the Louvre
+    }
   },
   bigben: {
     style: {
@@ -219,7 +266,14 @@ const CITY_CONFIGS: Record<string, { style?: CityStyle; frame?: { ring: number; 
       perRing: [10, 13],
       trees: 10
     },
-    frame: { ring: 68, plaza: 50, groundY: 1.4 }
+    frame: { ring: 68, plaza: 50, groundY: 1.4 },
+    custom: {
+      rInner: 160,
+      avoid: (x, z) =>
+        Math.abs(z - 100) < 24 || // the Thames
+        Math.hypot(x - 95, z - 145) < 42 || // London Eye
+        Math.hypot(x + 160, z - 100) < 40 // Tower Bridge
+    }
   },
   colosseum: {
     style: {
@@ -401,13 +455,23 @@ function city(B: Bricks, s: CityStyle, seed: number): void {
  * flattened pad from the downtown core out to the edge, so a landmark never
  * sits on a lonely patch of empty lawn.
  */
-function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: number): void {
+function suburbs(
+  B: Bricks,
+  s: CityStyle,
+  seed: number,
+  rInner: number,
+  rOuter: number,
+  avoid?: (x: number, z: number) => boolean
+): void {
   // Concentric ring roads.
   for (let r = rInner + 18; r < rOuter; r += 62) {
     const seg = Math.max(28, Math.floor(r / 5));
     for (let i = 0; i < seg; i++) {
       const a = (i / seg) * Math.PI * 2;
-      B.add(Math.cos(a) * r, 0, Math.sin(a) * r, 8, 0.8, 8, 0x3a3f46, { ry: -a });
+      const rx = Math.cos(a) * r;
+      const rz = Math.sin(a) * r;
+      if (avoid?.(rx, rz)) continue;
+      B.add(rx, 0, rz, 8, 0.8, 8, 0x3a3f46, { ry: -a });
     }
   }
 
@@ -424,6 +488,7 @@ function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: 
       const jr = r + (hash2(seed + n, 3) - 0.5) * 16;
       const x = Math.cos(a) * jr;
       const z = Math.sin(a) * jr;
+      if (avoid?.(x, z)) continue;
       const h1 = hash2(seed + n * 13, 7);
       const w = 8 + h1 * 6;
       // Deliberately low (a few storeys) so it never competes with the monument.
@@ -445,6 +510,7 @@ function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: 
     const r = rInner + hash2(i, seed + 3) * (rOuter - rInner);
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
+    if (avoid?.(x, z)) continue;
     B.add(x, 1, z, 1.1, 3, 1.1, 0x8a6743);
     B.add(x, 4, z, 4.2, 4.2, 4.2, i % 2 ? 0x2e7d1e : 0x3fa021);
   }
@@ -453,46 +519,227 @@ function suburbs(B: Bricks, s: CityStyle, seed: number, rInner: number, rOuter: 
 /* ---------------------------------------------------------------- builders */
 
 function eiffel(B: Bricks): void {
-  const grey = 0x8a8f96;
-  const dark = 0x6a6f76;
-  for (let y = 0; y < 60; y += 4) {
-    const t = y / 60;
-    const w = 30 * Math.pow(1 - t, 1.75) + 3;
-    const lw = 4.2 * (1 - t) + 1.4;
-    const color = (y / 4) % 2 ? grey : dark;
+  const iron = 0x8a6a4c;
+  const dark = 0x6e5238;
+  const gold = 0xffd24a;
+
+  // Four curved lattice legs merging into the tower body.
+  const half = (t: number) => 34 * Math.pow(1 - t, 1.65) + 5.5;
+  for (let y = 0; y < 80; y += 3.2) {
+    const t = y / 80;
+    const w = half(t);
+    const lw = 6.2 * (1 - t) + 2.2;
+    const color = Math.round(y / 3.2) % 2 ? iron : dark;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        B.add((sx * w) / 2, y, (sz * w) / 2, lw, 4, lw, color);
+        B.add(sx * w, y, sz * w, lw, 3.2, lw, color);
       }
     }
-    if (y === 16 || y === 32) {
-      B.add(0, y, 0, w + 8, 3, w + 8, dark, { studs: true });
-    } else if (y % 12 === 0 && y > 0) {
-      B.add(0, y + 1, 0, w + lw, 1.6, 3, grey);
-      B.add(0, y + 1, 0, 3, 1.6, w + lw, grey);
+    // Ring girders tying the legs into a lattice.
+    if (Math.round(y / 3.2) % 3 === 0 && y > 3 && y < 76) {
+      B.add(0, y + 1, 0, w * 2 + lw, 1.3, 2.2, iron);
+      B.add(0, y + 1, 0, 2.2, 1.3, w * 2 + lw, iron);
     }
   }
-  for (let y = 60; y < 84; y += 4) {
-    B.add(0, y, 0, 4.5, 4, 4.5, (y / 4) % 2 ? grey : dark);
+
+  // Ground arches sweeping between the feet on all four faces.
+  const w0 = half(0);
+  for (const s of [-1, 1]) {
+    B.add(0, 17, s * w0, w0 * 1.5, 3, 2.8, dark);
+    B.add(s * w0, 17, 0, 2.8, 3, w0 * 1.5, dark);
+    for (let k = 1; k <= 3; k++) {
+      const drop = k * k * 1.5;
+      const off = w0 * (0.3 + k * 0.18);
+      B.add(off, 17 - drop, s * w0, 2.4, 2.8, 2.4, dark);
+      B.add(-off, 17 - drop, s * w0, 2.4, 2.8, 2.4, dark);
+      B.add(s * w0, 17 - drop, off, 2.4, 2.8, 2.4, dark);
+      B.add(s * w0, 17 - drop, -off, 2.4, 2.8, 2.4, dark);
+    }
   }
-  B.add(0, 84, 0, 6.5, 2.5, 6.5, dark, { studs: true });
-  B.add(0, 86.5, 0, 1.6, 10, 1.6, grey);
 
-  // Golden beacon and a French tricolour flying from the mast.
-  B.add(0, 92, 0, 2.2, 2.2, 2.2, 0xffd24a, { glow: true });
-  B.add(0, 96, 0, 0.8, 9, 0.8, 0xf4f4f2);
-  B.add(2.4, 100, 0, 2.6, 4.4, 0.4, 0x2c3e9e, { glow: true });
-  B.add(5, 100, 0, 2.6, 4.4, 0.4, 0xf4f4f2, { glow: true });
-  B.add(7.6, 100, 0, 2.6, 4.4, 0.4, 0xd5202b, { glow: true });
+  // Observation platforms with golden edge lights.
+  const platform = (y: number, w: number) => {
+    B.add(0, y, 0, w, 3.2, w, dark, { studs: true });
+    B.add(0, y + 3.2, 0, w - 3, 1.2, w - 3, iron);
+    for (const s of [-1, 1]) {
+      B.add(s * (w / 2), y + 2.4, 0, 1.1, 1.1, w, gold, { glow: true });
+      B.add(0, y + 2.4, s * (w / 2), w, 1.1, 1.1, gold, { glow: true });
+    }
+  };
+  platform(26, 2 * half(26 / 80) + 12);
+  platform(52, 2 * half(52 / 80) + 9);
 
-  // Coloured platform up-lights for a festive night-time glow.
-  for (const yy of [16, 32]) {
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const w = 30 * Math.pow(1 - yy / 60, 1.75) + 3;
-        B.add((sx * (w + 6)) / 2, yy, (sz * (w + 6)) / 2, 1.4, 1.4, 1.4, sx * sz > 0 ? 0x38d0ff : 0xffd24a, { glow: true });
+  // Upper column to the summit deck.
+  for (let y = 80; y < 122; y += 3.2) {
+    const t = (y - 80) / 42;
+    const w = 11 * (1 - t) + 5.2;
+    B.add(0, y, 0, w, 3.2, w, Math.round(y / 3.2) % 2 ? iron : dark);
+  }
+
+  // Summit deck, antenna, beacon and tricolour.
+  B.add(0, 122, 0, 10.5, 3, 10.5, dark, { studs: true });
+  B.add(0, 125, 0, 8, 1.2, 8, gold, { glow: true });
+  B.add(0, 126.2, 0, 3.4, 6, 3.4, iron);
+  for (let y = 132; y < 146; y += 3.5) {
+    B.add(0, y, 0, 1.7, 3.5, 1.7, Math.round(y / 3.5) % 2 ? iron : dark);
+  }
+  B.add(0, 146, 0, 2.6, 2.6, 2.6, 0xfff3c2, { glow: true });
+  B.add(0, 149, 0, 1, 5, 1, 0xf4f4f2);
+  B.add(2.2, 151, 0, 2.4, 4, 0.4, 0x2c3e9e, { glow: true });
+  B.add(4.6, 151, 0, 2.4, 4, 0.4, 0xf4f4f2, { glow: true });
+  B.add(7, 151, 0, 2.4, 4, 0.4, 0xd5202b, { glow: true });
+
+  // Summit searchlight, firing straight up like the real night beacon.
+  B.add(0, 150, 0, 3, 130, 3, 0xfff2c8, { beam: true });
+
+  // Champagne sparkle: dozens of tiny golden lights riding the frame.
+  for (let i = 0; i < 60; i++) {
+    const y = hash2(i, 41) * 120;
+    let x: number;
+    let z: number;
+    if (y < 80) {
+      const w = half(y / 80);
+      const sx = hash2(i, 43) > 0.5 ? 1 : -1;
+      const sz = hash2(i, 47) > 0.5 ? 1 : -1;
+      x = sx * (w + 1.2) * (0.75 + hash2(i, 53) * 0.3);
+      z = sz * (w + 1.2) * (0.75 + hash2(i, 59) * 0.3);
+    } else {
+      const w = 11 * (1 - (y - 80) / 42) + 5.2;
+      x = (hash2(i, 43) - 0.5) * (w + 2);
+      z = (hash2(i, 47) - 0.5) * (w + 2);
+    }
+    B.add(x, y, z, 0.9, 0.9, 0.9, 0xffe9a0, { glow: true });
+  }
+}
+
+/**
+ * Bespoke Paris downtown: Champ de Mars, Trocadéro fountains, the Seine with
+ * lamp-lined bridges, Haussmann boulevards, the Arc de Triomphe on its star
+ * plaza and the Louvre with its glowing glass pyramid.
+ */
+function parisDowntown(B: Bricks): void {
+  const cream = 0xefe3c8;
+  const cream2 = 0xe6d8b8;
+  const mansard = 0x53616f;
+  const lawn = 0x3fa021;
+  const lawn2 = 0x4cb227;
+  const water = 0x3f8fd4;
+  const stone = 0xcfc6b2;
+  const asphalt = 0x3e434b;
+  const gold = 0xffd98a;
+
+  // Plaza under the tower + the square ring road the traffic loop drives.
+  B.add(0, 0, 0, 96, 1.2, 96, 0xc9cdd3);
+  B.add(0, 0, 0, 96, 1.2, 96, 0xc9cdd3, { ry: Math.PI / 4 });
+  const R = 60;
+  for (let side = 0; side < 4; side++) {
+    const horizontal = side % 2 === 0;
+    const off = side < 2 ? R : -R;
+    if (horizontal) B.add(0, 0, off, R * 2 + 10, 0.9, 10, asphalt);
+    else B.add(off, 0, 0, 10, 0.9, R * 2 + 10, asphalt);
+  }
+
+  // Champ de Mars: a long tree-lined lawn stretching south of the tower.
+  plate(B, 0, 140, 74, 145, 0.4, 1.4, lawn, 70);
+  B.add(0, 1.9, 140, 9, 0.4, 145, 0xd9cdb0);
+  for (let i = 0; i < 9; i++) {
+    const z = 80 + i * 15;
+    for (const sx of [-31, 31]) {
+      B.add(sx, 1, z, 1.4, 4, 1.4, 0x8a6743);
+      B.add(sx, 5.5, z, 5.5, 5, 5.5, i % 2 ? 0x2e7d1e : lawn2);
+    }
+  }
+  // École Militaire closing the vista.
+  B.add(0, 0, 224, 64, 14, 18, cream, { studs: true });
+  B.add(0, 14, 224, 66, 3, 20, mansard);
+  B.add(0, 17, 224, 18, 8, 14, cream2);
+  B.add(0, 25, 224, 20, 2.5, 16, mansard);
+
+  // Trocadéro esplanade + fountain jets across the river axis.
+  B.add(0, 0, -88, 80, 1.6, 44, stone);
+  B.add(0, 1.6, -88, 40, 1, 26, water);
+  for (let i = -2; i <= 2; i++) B.add(i * 8, 2.6, -88, 1.4, 3.5, 1.4, 0xbfe9ff, { glow: true });
+  for (const s of [-1, 1]) {
+    B.add(s * 34, 0, -106, 26, 16, 12, cream, { ry: s * 0.5, studs: true });
+    B.add(s * 34, 16, -106, 28, 3, 14, mansard, { ry: s * 0.5 });
+  }
+
+  // The Seine: a broad blue ribbon with stone quays and two lamp-lit bridges.
+  plate(B, 0, -150, 400, 30, -0.6, 1.6, water, 100);
+  plate(B, 0, -168, 400, 6, 0.4, 1.4, stone, 100);
+  plate(B, 0, -132, 400, 6, 0.4, 1.4, stone, 100);
+  for (const bx of [-60, 60]) {
+    B.add(bx, 1.4, -150, 16, 1.6, 40, 0xd8d2c4, { studs: true });
+    B.add(bx - 7, 0.6, -150, 2, 2.5, 40, stone);
+    B.add(bx + 7, 0.6, -150, 2, 2.5, 40, stone);
+    for (const lz of [-164, -136]) {
+      for (const s of [-1, 1]) {
+        B.add(bx + s * 7, 3, lz, 0.8, 3.5, 0.8, 0x33363c);
+        B.add(bx + s * 7, 6.8, lz, 1.2, 1.2, 1.2, gold, { glow: true });
       }
     }
+  }
+  // A bateau-mouche drifting under the bridges.
+  B.add(-20, 0.8, -150, 8, 2.2, 26, 0xf4f4f2);
+  B.add(-20, 3, -150, 6, 2, 16, 0x9fd8ff, { glow: true });
+
+  // Haussmann quarters: cream facades, mansard roofs, warm balcony bands.
+  let n = 0;
+  for (let gx = -152; gx <= 152; gx += 38) {
+    for (let gz = -104; gz <= 48; gz += 36) {
+      if (Math.abs(gx) < 60 && Math.abs(gz) < 60) continue; // tower plaza + ring
+      if (Math.abs(gx) < 46 && gz > -110 && gz < -60) continue; // Trocadéro
+      if (Math.hypot(gx + 165, gz - 70) < 48) continue; // Arc plaza
+      if (Math.abs(Math.abs(gx) - 60) < 10) continue; // bridge boulevards
+      const w = 17 + hash2(n, 3) * 6;
+      const h = 13 + hash2(n, 7) * 6;
+      B.add(gx, 0, gz, w + 3, 1.2, w + 3, 0xc4c9cf);
+      B.add(gx, 1, gz, w, h, w, n % 2 ? cream : cream2, { studs: true });
+      B.add(gx, 1 + h, gz, w + 1.4, 2.8, w + 1.4, mansard);
+      B.add(gx, 3.8 + h, gz, w * 0.55, 2.2, w * 0.55, mansard);
+      for (let y = 4.6; y < h - 2; y += 4.6) {
+        B.add(gx, 1 + y, gz, w + 0.5, 0.9, w + 0.5, 0xffe2ad, { glow: true });
+      }
+      n++;
+    }
+  }
+
+  // Arc de Triomphe on its own star plaza, eternal flame below the vault.
+  const AX = -165;
+  const AZ = 70;
+  B.add(AX, 0, AZ, 66, 1.2, 66, 0xc9cdd3, { ry: Math.PI / 8 });
+  B.add(AX, 0, AZ, 66, 1.2, 66, 0xc9cdd3, { ry: -Math.PI / 8 });
+  for (const s of [-1, 1]) B.add(AX + s * 10, 1, AZ, 8, 24, 13, cream, { studs: true });
+  B.add(AX, 25, AZ, 30, 8, 15, cream);
+  B.add(AX, 33, AZ, 26, 3.5, 13, cream2);
+  B.add(AX, 1.2, AZ, 2, 2, 2, 0xffb347, { glow: true });
+
+  // Avenue des Champs-Élysées running from the Arc toward the tower plaza.
+  B.add(-82.5, 0, 35, 172, 0.9, 11, asphalt, { ry: Math.atan2(70, -165) + Math.PI });
+  for (let k = 1; k < 7; k++) {
+    const t = k / 7;
+    const x = AX * (1 - t);
+    const z = AZ * (1 - t);
+    for (const s of [-1, 1]) {
+      const px = x + s * 8 * (AZ / 179);
+      const pz = z + s * 8 * (165 / 179);
+      B.add(px, 1, pz, 0.7, 5, 0.7, 0x33363c);
+      B.add(px, 6.4, pz, 1.3, 1.3, 1.3, gold, { glow: true });
+    }
+  }
+
+  // The Louvre: palace wings wrapping the glowing glass pyramid.
+  const LX = 150;
+  const LZ = -195;
+  B.add(LX, 0, LZ, 74, 1.4, 54, 0xd8d2c4, { studs: true });
+  B.add(LX, 1, LZ - 21, 70, 12, 12, cream, { studs: true });
+  B.add(LX - 31, 1, LZ + 2, 12, 12, 34, cream);
+  B.add(LX + 31, 1, LZ + 2, 12, 12, 34, cream);
+  B.add(LX, 13, LZ - 21, 72, 2.5, 14, mansard);
+  B.add(LX - 31, 13, LZ + 2, 14, 2.5, 36, mansard);
+  B.add(LX + 31, 13, LZ + 2, 14, 2.5, 36, mansard);
+  for (let k = 0; k < 5; k++) {
+    B.add(LX, 1.4 + k * 2.6, LZ + 6, 16 - k * 3, 2.6, 16 - k * 3, 0x9fe8ff, { glow: k % 2 === 0 });
   }
 }
 
@@ -518,8 +765,17 @@ const NYC_ADS_SCATTERED: AdTower[] = [
   { x: 180, z: -470, w: 26, h: 200, face: 'nx' },
   { x: -120, z: 440, w: 28, h: 198, face: 'px' },
   { x: 120, z: 150, w: 30, h: 212, face: 'nx' },
-  { x: -60, z: -140, w: 30, h: 218, face: 'px' }
+  { x: -60, z: -140, w: 30, h: 218, face: 'px' },
+  { x: -180, z: -420, w: 28, h: 214, face: 'px' },
+  { x: 180, z: 320, w: 28, h: 206, face: 'nx' },
+  { x: -120, z: 640, w: 30, h: 220, face: 'px' },
+  { x: 120, z: -640, w: 28, h: 208, face: 'nx' },
+  { x: 60, z: 560, w: 26, h: 190, face: 'nx' },
+  { x: -60, z: -560, w: 26, h: 186, face: 'px' }
 ];
+
+// Window tones cycled across the skyline so night floors aren't one flat cream.
+const NYC_WIN_TONES = [0xffe9a8, 0xcfe4ff, 0xbfead9, 0xffd9c4];
 
 /** A full grid Manhattan: rivers, avenues and cross-streets with flyable gaps,
  *  colourful glass/brick towers, Central Park, a Times Square screen district
@@ -602,30 +858,43 @@ function nyc(B: Bricks): void {
       const h1 = 26 + peak * 156 + r1 * 54;
       const ci = Math.floor(hash2(cx * 11 + 5, cz * 13 + 3) * NYC_FACADES.length) % NYC_FACADES.length;
       const ci2 = (ci + 3 + Math.floor(r2 * 5)) % NYC_FACADES.length;
+      const tone = NYC_WIN_TONES[Math.floor(hash2(cx * 23 + 1, cz * 29 + 7) * NYC_WIN_TONES.length) % NYC_WIN_TONES.length];
       B.add(cx, 3, cz, w + 4, 1, d + 4, 0x9a9ea3); // sidewalk footprint
       B.add(cx, 3, cz, w, h1, d, NYC_FACADES[ci], { studs: true });
-      for (let y = 12; y < h1 - 6; y += 10) {
-        B.add(cx, 3 + y, cz, w + 0.6, 1.6, d + 0.6, win, { glow: true });
+      for (let y = 12; y < h1 - 6; y += 9) {
+        // some floors stay dark so the night skyline reads lived-in, not striped
+        if (hash2(cx + y * 3, cz - y * 5) > 0.84) continue;
+        B.add(cx, 3 + y, cz, w + 0.6, 1.3, d + 0.6, tone, { glow: true });
       }
       // Setback upper tier.
       const h2 = 14 + r2 * 48;
       const w2 = w * 0.66;
       const d2 = d * 0.66;
       B.add(cx, 3 + h1, cz, w2, h2, d2, NYC_FACADES[ci2], { studs: true });
-      for (let y = 8; y < h2 - 4; y += 10) {
-        B.add(cx, 3 + h1 + y, cz, w2 + 0.6, 1.4, d2 + 0.6, win, { glow: true });
+      for (let y = 8; y < h2 - 4; y += 9) {
+        if (hash2(cx - y * 7, cz + y * 3) > 0.84) continue;
+        B.add(cx, 3 + h1 + y, cz, w2 + 0.6, 1.2, d2 + 0.6, tone, { glow: true });
+      }
+      // Neon corner strips on the tall midtown towers.
+      if (h1 > 120) {
+        const neon = NYC_ROOF_SIGNS[(ci * 7 + 1) % NYC_ROOF_SIGNS.length];
+        for (const sx of [-1, 1]) {
+          B.add(cx + sx * (w / 2 + 0.4), 3 + h1 * 0.3, cz + (d / 2 + 0.4), 1, h1 * 0.62, 1, neon, { glow: true });
+        }
       }
       // Crown: rooftop billboard, spire, or brick water-tower for variety.
       const cap = hash2(cx * 17 + 9, cz * 19 + 1);
       const topY = 3 + h1 + h2;
-      if (cap > 0.76) {
+      if (cap > 0.72) {
         const sign = NYC_ROOF_SIGNS[ci % NYC_ROOF_SIGNS.length];
         B.add(cx, topY + 7, cz, w2 * 0.92, 13, 2.6, sign, { glow: true });
         B.add(cx, topY, cz, 2.6, 8, 2.6, 0x5f666e);
-      } else if (cap > 0.48) {
+      } else if (cap > 0.46) {
         const sp = 22 + r1 * 30;
         B.add(cx, topY, cz, 3, sp, 3, 0xc9d2da);
         B.add(cx, topY + sp, cz, 1.2, 9, 1.2, 0xff3b6b, { glow: true });
+        // parapet neon trim under the spire
+        B.add(cx, topY - 1.4, cz, w2 + 0.8, 1.1, d2 + 0.8, NYC_ROOF_SIGNS[(ci + 2) % NYC_ROOF_SIGNS.length], { glow: true });
       } else {
         B.add(cx + w2 * 0.22, topY, cz, 6, 7, 6, 0x7a5a3a); // rooftop water tower
         B.add(cx + w2 * 0.22, topY + 7, cz, 7, 3, 7, 0x5a3f28);
@@ -659,6 +928,110 @@ function nyc(B: Bricks): void {
   B.add(-168, 3, 24, 30, 122, 30, 0xc7cdd2, { studs: true });
   for (let k = 0; k < 6; k++) B.add(-168, 125 + k * 6, 24, 24 - k * 3.6, 6, 24 - k * 3.6, 0xd9e0e6);
   B.add(-168, 161, 24, 1.8, 20, 1.8, 0xe6ebf0);
+
+  // Signature crown lighting so the supertalls own the night skyline.
+  B.add(168, 120, 40, 28, 1.6, 28, 0x9fe8ff, { glow: true }); // Empire State setback ring
+  B.add(168, 174, 40, 17, 1.6, 17, 0x9fe8ff, { glow: true });
+  B.add(168, 233, 40, 2, 3, 2, 0xff3b6b, { glow: true }); // mast beacon
+  B.add(0, 176, 820, 35, 2, 35, 0xbfe0ff, { glow: true }); // One WTC crown band
+  B.add(0, 245, 820, 2, 4, 2, 0xff3b6b, { glow: true }); // spire beacon
+  for (let k = 0; k < 6; k++) {
+    B.add(-168, 128 + k * 6, 24, 25 - k * 3.6, 1, 25 - k * 3.6, 0xffd24a, { glow: true }); // Chrysler arcs
+  }
+
+  // Street lamps marching down the avenues.
+  for (let ax = -252; ax <= 252; ax += 168) {
+    for (let z = -HZ + 40; z < HZ; z += 150) {
+      if (Math.abs(ax) > islandHalf(z) - 24) continue;
+      for (const s of [-1, 1]) {
+        B.add(ax + s * 7, 3.4, z, 0.6, 7, 0.6, 0x2a2f36);
+        B.add(ax + s * 7, 10.6, z, 1.3, 1.3, 1.3, 0xfff3c2, { glow: true });
+      }
+    }
+  }
+
+  // Times Square floor: neon pavement panels washing the core in colour.
+  for (let i = 0; i < 14; i++) {
+    const px = (hash2(i, 71) - 0.5) * 100;
+    const pz = (hash2(i, 73) - 0.5) * 150;
+    B.add(px, 3.3, pz, 8 + hash2(i, 77) * 8, 0.4, 6 + hash2(i, 79) * 6, NYC_ROOF_SIGNS[i % NYC_ROOF_SIGNS.length], { glow: true });
+  }
+
+  // Liberty Island: star fort, pedestal, mint-green Lady with a golden torch.
+  const LIX = -430;
+  const LIZ = 760;
+  const mint = 0x7fc4a8;
+  B.add(LIX, -14, LIZ, 84, 15, 84, 0x4a4640); // islet bedrock rising from the seabed
+  B.add(LIX, 1, LIZ, 74, 3, 74, 0x8a9a6b, { studs: true });
+  B.add(LIX, 1, LIZ, 74, 3, 74, 0x8a9a6b, { ry: Math.PI / 4 }); // star points
+  B.add(LIX, 4, LIZ, 30, 10, 30, 0xd9cdb0, { studs: true });
+  B.add(LIX, 14, LIZ, 20, 14, 20, 0xcabc9e);
+  B.add(LIX, 28, LIZ, 13, 6, 13, 0xd9cdb0);
+  B.add(LIX, 34, LIZ, 12, 16, 12, mint); // robe
+  B.add(LIX, 50, LIZ, 9, 12, 9, mint);
+  B.add(LIX, 62, LIZ, 7, 9, 7, mint);
+  B.add(LIX - 5.5, 58, LIZ, 3, 10, 3, mint); // tablet arm
+  B.add(LIX - 6.5, 63, LIZ, 2.4, 6, 4.5, 0x9fd4b8);
+  B.add(LIX, 71, LIZ, 4.5, 4.5, 4.5, 0x9fd4b8); // head
+  B.add(LIX, 75.5, LIZ, 6.5, 1.6, 6.5, mint, { ry: Math.PI / 4 }); // crown
+  B.add(LIX + 5, 66, LIZ, 2.6, 14, 2.6, mint); // raised torch arm
+  B.add(LIX + 5, 80, LIZ, 2.2, 3, 2.2, 0xd8b84a);
+  B.add(LIX + 5, 83, LIZ, 3, 3, 3, 0xffcf5e, { glow: true }); // flame
+
+  // Brooklyn: a low-rise borough across the East River on its own bedrock.
+  for (let cz = 360; cz <= 680; cz += 108) {
+    for (let x = 880; x <= 1080; x += 108) {
+      B.add(x, -14, cz, 109, 17, 109, 0x4a4640);
+      B.add(x, 2.4, cz, 109, 0.8, 109, 0x3c4046);
+    }
+  }
+  let bn = 0;
+  for (let x = 890; x <= 1070; x += 44) {
+    for (let cz = 380; cz <= 660; cz += 46) {
+      const bw = 22 + hash2(x, cz) * 10;
+      const bh = 14 + hash2(x * 3, cz * 7) * 22;
+      const bc = NYC_FACADES[(bn * 5 + 3) % NYC_FACADES.length];
+      B.add(x, 3, cz, bw, bh, bw, bc, { studs: true });
+      for (let y = 9; y < bh - 3; y += 9) {
+        if (hash2(x + y, cz) > 0.8) continue;
+        B.add(x, 3 + y, cz, bw + 0.6, 1.2, bw + 0.6, 0xffe9a8, { glow: true });
+      }
+      B.add(x, 3 + bh, cz, bw * 0.4, 4, bw * 0.4, 0x7a5a3a);
+      bn++;
+    }
+  }
+
+  // A grand suspension bridge across the East River to Brooklyn.
+  const deckY = 16;
+  for (let x = 310; x <= 880; x += 30) {
+    B.add(x + 15, deckY, 520, 31, 2.2, 16, 0x6a707a);
+    B.add(x + 15, deckY + 1.2, 520, 31, 0.5, 1.2, 0xf7d354);
+  }
+  for (let k = 0; k < 5; k++) {
+    B.add(298 - k * 12, deckY - 3 - k * 2.8, 520, 13, 2.2, 16, 0x6a707a);
+    B.add(892 + k * 12, deckY - 3 - k * 2.8, 520, 13, 2.2, 16, 0x6a707a);
+  }
+  for (const tx of [430, 720]) {
+    for (const s of [-1, 1]) B.add(tx, -8, 520 + s * 6, 8, 60, 5, 0xb8a88c);
+    B.add(tx, 52, 520, 8, 6, 18, 0xb8a88c);
+    B.add(tx, 58, 520, 9, 2, 19, 0x9c8c70);
+    B.add(tx, 60, 520, 1.4, 6, 1.4, 0xff3b6b, { glow: true });
+  }
+  let ci3 = 0;
+  for (let x = 316; x <= 874; x += 14) {
+    let t: number;
+    if (x < 430) t = (430 - x) / 120;
+    else if (x <= 720) t = Math.abs(x - 575) / 145;
+    else t = (x - 720) / 160;
+    const cy = 19 + t * t * 37;
+    for (const s of [-1, 1]) B.add(x, cy, 520 + s * 7.4, 6, 1.4, 1.2, 0xdfe6ec);
+    if (ci3 % 3 === 0 && cy > 23) {
+      for (const s of [-1, 1]) B.add(x, deckY + 2, 520 + s * 7.4, 0.5, cy - deckY - 2, 0.5, 0x9aa3ab);
+    }
+    // necklace lights along the cables
+    if (ci3 % 2 === 0) B.add(x, cy + 1.4, 520, 1.1, 1.1, 1.1, 0xffe9a8, { glow: true });
+    ci3++;
+  }
 
   // Waterfront docks with moored boats along both shores (boats float at the
   // harbour surface, well below the raised island deck).
@@ -765,38 +1138,85 @@ function sydney(B: Bricks): void {
 function colosseum(B: Bricks): void {
   const stone = 0xd9c49a;
   const dark = 0xc4ad82;
+  const light = 0xe8d7ae;
   const sand = 0xe3cf9e;
-  const R0 = 40;
-  const n = 34;
+  const R0 = 46;
+  const n = 40;
 
   for (let i = 0; i < n; i++) {
     const th = (i / n) * Math.PI * 2;
-    const x = Math.cos(th) * R0;
-    const z = Math.sin(th) * R0;
     const ry = -th + Math.PI / 2;
-    const broken = th > 4.5;
+    const broken = th > 4.4; // the ruined southern arc, like the real thing
     const color = i % 2 ? stone : dark;
+    const px = Math.cos(th);
+    const pz = Math.sin(th);
+    const ring = (rr: number, y: number, h: number, w: number, c: number, studs = false) =>
+      B.add(px * rr, y, pz * rr, w, h, 6, c, { ry, studs });
 
-    if (i % 5 === 0) {
-      B.add(x, 5, z, 7.2, 6, 6, color, { ry });
-    } else {
-      B.add(x, 0, z, 7.2, 11, 6, color, { ry });
-    }
+    // Tier 1: piers with lintels so the gaps read as arcades.
+    ring(R0, 0, 9, 4.2, color);
+    ring(R0, 9, 3, 7.6, light);
+    // Amber arch lamps glowing in the arcades at dusk.
+    if (i % 2 === 0) B.add(px * (R0 + 2.9), 4.5, pz * (R0 + 2.9), 2.2, 3.4, 0.8, 0xffce7a, { ry, glow: true });
+
     if (!broken) {
-      B.add(x, 11, z, 7.2, 10, 6, i % 2 ? dark : stone, { ry });
-      if (th < 3.4) B.add(x, 21, z, 7.2, 9, 6, color, { ry, studs: true });
+      ring(R0 - 1, 12, 9, 4.2, i % 2 ? dark : stone);
+      ring(R0 - 1, 21, 3, 7.6, light);
+      ring(R0 - 2, 24, 9, 4.2, color);
+      ring(R0 - 2, 33, 3, 7.6, light);
+      // Attic wall + velarium masts flying pennants.
+      ring(R0 - 2.5, 36, 6, 6.5, i % 2 ? light : stone, i % 3 === 0);
+      if (i % 4 === 0) {
+        B.add(px * (R0 - 2), 42, pz * (R0 - 2), 1, 8, 1, 0x8a6743, { ry });
+        B.add(px * (R0 - 2), 50, pz * (R0 - 2), 2.6, 1.8, 0.5, i % 8 ? 0xd5202b : 0xd8b84a, { ry, glow: true });
+      }
+    } else if (th < 5.6) {
+      // Crumbled shoulder stepping down into the ruin.
+      ring(R0 - 1, 12, 6, 4.2, i % 2 ? dark : stone);
     }
   }
 
-  for (let i = 0; i < 22; i++) {
-    const th = (i / 22) * Math.PI * 2;
-    const x = Math.cos(th) * 26;
-    const z = Math.sin(th) * 26;
-    B.add(x, 0, z, 8, 13, 5, i % 2 ? sand : stone, { ry: -th + Math.PI / 2 });
+  // Inner bowl and seating rings.
+  for (let i = 0; i < 26; i++) {
+    const th = (i / 26) * Math.PI * 2;
+    B.add(Math.cos(th) * 30, 0, Math.sin(th) * 30, 8.6, 10, 5, i % 2 ? sand : stone, { ry: -th + Math.PI / 2 });
+    B.add(Math.cos(th) * 34, 6, Math.sin(th) * 34, 9.2, 5, 5, i % 2 ? stone : dark, { ry: -th + Math.PI / 2 });
   }
 
-  B.add(0, 0, 0, 38, 2.5, 38, 0xd8b878, { ry: Math.PI / 4 });
-  B.add(0, 0, 0, 38, 2.5, 38, 0xd8b878);
+  // Arena floor with the hypogeum cross exposed, and a duel in progress.
+  B.add(0, 0, 0, 40, 2.5, 40, 0xd8b878, { ry: Math.PI / 4 });
+  B.add(0, 0, 0, 40, 2.5, 40, 0xd8b878);
+  B.add(0, 2.5, 0, 30, 0.5, 4, 0x6b5b3f);
+  B.add(0, 2.5, 0, 4, 0.5, 30, 0x6b5b3f);
+  for (const [gx, gz, c] of [[-5, 2, 0xd5202b], [5, -2, 0x2c6bd6]] as const) {
+    B.add(gx, 3, gz, 1.3, 2.2, 1, 0x8a6743);
+    B.add(gx, 5.2, gz, 1.7, 2.2, 1.2, c);
+    B.add(gx, 7.4, gz, 1.2, 1.2, 1.2, 0xf5c542);
+    B.add(gx + (gx > 0 ? -2 : 2), 6, gz, 0.6, 4, 0.6, 0xc9d2da);
+  }
+
+  // Fallen columns and rubble scattered outside the walls.
+  for (let i = 0; i < 14; i++) {
+    const a = hash2(i, 61) * Math.PI * 2;
+    const rr = 58 + hash2(i, 63) * 14;
+    const x = Math.cos(a) * rr;
+    const z = Math.sin(a) * rr;
+    if (hash2(i, 67) > 0.5) {
+      B.add(x, 0, z, 2.6, 2.6, 9, stone, { ry: a * 3 });
+      B.add(x + 3, 0, z + 2, 2.4, 2.4, 2.4, dark);
+    } else {
+      const ch = 7 + hash2(i, 69) * 6;
+      B.add(x, 0, z, 3, ch, 3, i % 2 ? light : stone);
+      B.add(x, ch, z, 4, 1.6, 4, dark);
+    }
+  }
+
+  // A little triumphal arch on the approach.
+  const AX = 52;
+  const AZ = 52;
+  for (const s of [-1, 1]) B.add(AX + s * 6, 0, AZ, 4, 14, 6, light, { ry: Math.PI / 4 });
+  B.add(AX, 14, AZ, 18, 4, 7, stone, { ry: Math.PI / 4 });
+  B.add(AX, 18, AZ, 15, 2.5, 6, dark, { ry: Math.PI / 4 });
 }
 
 function fuji(B: Bricks): void {
@@ -815,27 +1235,44 @@ function fuji(B: Bricks): void {
 }
 
 /** The Great Sphinx: a reclining lion body with a pharaoh's nemes headdress. */
-function sphinx(B: Bricks, cx: number, cz: number): void {
+function sphinx(B: Bricks, cx: number, cz: number, s = 1): void {
   const stone = 0xd9b26a;
   const stone2 = 0xcaa25c;
   const gold = 0xd8b84a;
   const blue = 0x2c6bd6;
   // Body lies along +Z with the head/paws facing out toward -Z.
-  B.add(cx, 0, cz, 28, 20, 66, stone, { studs: true });
-  B.add(cx, 0, cz, 34, 6, 74, stone2); // plinth
-  for (const s of [-1, 1]) {
-    B.add(cx + s * 9, 0, cz - 44, 9, 9, 30, stone2); // outstretched paws
-    B.add(cx + s * 9, 0, cz - 58, 9, 5, 4, stone); // toes
+  B.add(cx, 0, cz, 28 * s, 20 * s, 66 * s, stone, { studs: true });
+  B.add(cx, 0, cz, 34 * s, 6 * s, 74 * s, stone2); // plinth
+  for (const sd of [-1, 1]) {
+    B.add(cx + sd * 9 * s, 0, cz - 44 * s, 9 * s, 9 * s, 30 * s, stone2); // outstretched paws
+    B.add(cx + sd * 9 * s, 0, cz - 58 * s, 9 * s, 5 * s, 4 * s, stone); // toes
   }
-  B.add(cx, 20, cz - 20, 20, 16, 18, stone); // chest / neck
+  B.add(cx, 20 * s, cz - 20 * s, 20 * s, 16 * s, 18 * s, stone); // chest / neck
   // Nemes headdress with striped lappets and a gold brow band.
-  B.add(cx, 34, cz - 24, 22, 18, 18, stone2); // head block
-  for (const s of [-1, 1]) {
-    B.add(cx + s * 10.5, 30, cz - 22, 4, 22, 18, blue);
+  B.add(cx, 34 * s, cz - 24 * s, 22 * s, 18 * s, 18 * s, stone2); // head block
+  for (const sd of [-1, 1]) {
+    B.add(cx + sd * 10.5 * s, 30 * s, cz - 22 * s, 4 * s, 22 * s, 18 * s, blue);
   }
-  B.add(cx, 44, cz - 22, 24, 4, 18, gold);
-  B.add(cx, 30, cz - 33.6, 14, 12, 1.6, 0xe6c07e); // face
-  B.add(cx, 22, cz - 33.6, 5, 3, 1.6, gold); // ceremonial beard
+  B.add(cx, 44 * s, cz - 22 * s, 24 * s, 4 * s, 18 * s, gold);
+  B.add(cx, 30 * s, cz - 33.6 * s, 14 * s, 12 * s, 1.6 * s, 0xe6c07e); // face
+  B.add(cx, 22 * s, cz - 33.6 * s, 5 * s, 3 * s, 1.6 * s, gold); // ceremonial beard
+  // Glowing eyes watching the causeway at night.
+  for (const sd of [-1, 1]) {
+    B.add(cx + sd * 3.4 * s, 33 * s, cz - 34 * s, 2 * s, 1.4 * s, 0.8 * s, 0xffd24a, { glow: true });
+  }
+}
+
+/** A two-humped brick camel plodding the desert. */
+function camel(B: Bricks, x: number, z: number): void {
+  const hide = 0xc89b5a;
+  B.add(x, 3.5, z, 8.5, 3.4, 3, hide);
+  for (const lx of [-3, 3]) {
+    for (const lz of [-1, 1]) B.add(x + lx, 0.5, z + lz, 1, 3, 1, hide);
+  }
+  B.add(x - 1.5, 6.9, z, 2.2, 1.8, 2.6, hide);
+  B.add(x + 1.5, 6.9, z, 2.2, 1.8, 2.6, hide);
+  B.add(x + 4.8, 5.5, z, 1.4, 3.4, 1.4, hide);
+  B.add(x + 5.4, 8.6, z, 2.2, 1.6, 1.6, 0xb9884a);
 }
 
 function giza(B: Bricks): void {
@@ -844,47 +1281,88 @@ function giza(B: Bricks): void {
   const sandDark = 0xd7bf85;
 
   // Wide desert plaza (tiled to follow the planet's curve).
-  plate(B, 0, 0, 520, 520, 0, 2, sand, 90);
-  for (let i = 0; i < 40; i++) {
-    B.add((hash2(i, 2) - 0.5) * 480, 2, (hash2(i, 6) - 0.5) * 480, 22, 0.3, 22, sandDark);
+  plate(B, 0, 0, 560, 560, 0, 2, sand, 90);
+  for (let i = 0; i < 46; i++) {
+    B.add((hash2(i, 2) - 0.5) * 520, 2, (hash2(i, 6) - 0.5) * 520, 22, 0.3, 22, sandDark);
   }
 
-  // Giant stepped pyramids, with hieroglyphic cartouches climbing the faces.
-  const pyramid = (cx: number, cz: number, base: number, glyphs: boolean) => {
-    const h = base * 0.68;
+  // Colossal stepped pyramids: glyph cartouches climb every face, and each
+  // gilded crown fires a beam of light into the sky (Luxor style).
+  const pyramid = (cx: number, cz: number, base: number, glyphs: boolean, capped: boolean) => {
+    const h = base * 0.7;
     for (let y = 0; y < h; y += 4) {
       const w = base * (1 - y / h) + 3;
-      const color = y > h - 12 ? 0xeed9a8 : (y / 4) % 2 ? 0xdcb56e : 0xcfa75f;
+      const color = capped && y > h - base * 0.16 ? 0xf2e7c8 : (y / 4) % 2 ? 0xdcb56e : 0xcfa75f;
       B.add(cx, y, cz, w, 4, w, color);
-      if (glyphs && (y / 4) % 2 === 0 && y > 6 && y < h - 16) {
-        B.add(cx, y + 1, cz + w / 2 + 0.4, 3.4, 2.6, 0.7, glyphCols[(y / 8) % glyphCols.length], { glow: true });
+      if (glyphs && (y / 4) % 2 === 0 && y > 6 && y < h - 18) {
+        B.add(cx, y + 1, cz + w / 2 + 0.4, 3.6, 2.8, 0.7, glyphCols[(y / 8) % glyphCols.length], { glow: true });
+        B.add(cx, y + 1, cz - w / 2 - 0.4, 3.6, 2.8, 0.7, glyphCols[(y / 8 + 1) % glyphCols.length], { glow: true });
+        B.add(cx + w / 2 + 0.4, y + 1, cz, 0.7, 2.8, 3.6, glyphCols[(y / 8 + 2) % glyphCols.length], { glow: true });
+        B.add(cx - w / 2 - 0.4, y + 1, cz, 0.7, 2.8, 3.6, glyphCols[(y / 8 + 3) % glyphCols.length], { glow: true });
       }
     }
-    B.add(cx, h, cz, 6, 5, 6, 0xd8b84a); // gilded capstone
+    B.add(cx, h, cz, 7, 6, 7, 0xd8b84a); // gilded capstone
+    B.add(cx, h + 4, cz, 3.4, 110, 3.4, 0xffecc0, { beam: true }); // skyward beam
   };
-  pyramid(-150, -70, 210, true);
-  pyramid(40, 50, 168, true);
-  pyramid(190, 160, 120, false);
+  pyramid(-170, -90, 250, true, false); // Khufu
+  pyramid(55, 55, 195, true, true); // Khafre keeps its limestone cap
+  pyramid(220, 185, 135, false, false); // Menkaure
 
-  // The Great Sphinx, out in front of the pyramids.
-  sphinx(B, -30, -210);
+  // The Great Sphinx, larger than life, gazing down the causeway.
+  sphinx(B, -40, -250, 1.35);
 
-  // A pair of glyph-carved obelisks flanking the approach.
-  for (const ox of [-210, 210]) {
-    for (let y = 0; y < 78; y += 5) {
-      const w = 9 * (1 - y / 110);
-      B.add(ox, y, -150, w, 5, w, (y / 5) % 2 ? 0xdcb56e : 0xcfa75f);
+  // Stone causeway from the Sphinx up to Khufu, lined with flame torches.
+  B.add(-105, 0.5, -170, 212, 1.2, 14, 0xd8c894, { ry: -Math.atan2(160, -130) });
+  for (let k = 1; k < 8; k++) {
+    const t = k / 8;
+    const x = -40 - 130 * t;
+    const z = -250 + 160 * t;
+    for (const s of [-1, 1]) {
+      const px = x + s * (-160 / 206) * 9;
+      const pz = z + s * (-130 / 206) * 9;
+      B.add(px, 0.5, pz, 1, 6, 1, 0x8a6743);
+      B.add(px, 6.8, pz, 1.6, 2, 1.6, 0xffb347, { glow: true });
     }
-    B.add(ox, 78, -150, 7, 9, 7, 0xd8b84a); // gold pyramidion
-    for (let y = 8; y < 66; y += 10) {
-      B.add(ox, y, -145.6, 3, 3.4, 0.7, glyphCols[(y / 10) % glyphCols.length], { glow: true });
+  }
+
+  // A camel caravan plodding beside the causeway.
+  for (let k = 0; k < 3; k++) {
+    const t = 0.25 + k * 0.18;
+    camel(B, -40 - 130 * t + 14, -250 + 160 * t + 8);
+  }
+
+  // Four glyph-carved obelisks guarding the site.
+  for (const [ox, oz] of [[-240, -170], [240, -170], [-260, 120], [130, -280]] as const) {
+    for (let y = 0; y < 88; y += 5) {
+      const w = 10 * (1 - y / 125);
+      B.add(ox, y, oz, w, 5, w, (y / 5) % 2 ? 0xdcb56e : 0xcfa75f);
     }
+    B.add(ox, 88, oz, 7.5, 10, 7.5, 0xd8b84a);
+    for (let y = 8; y < 74; y += 10) {
+      B.add(ox, y, oz + 5.2, 3, 3.4, 0.7, glyphCols[Math.floor(y / 10) % glyphCols.length], { glow: true });
+    }
+  }
+
+  // A palm-ringed oasis with a bazaar of striped market stalls.
+  const OX = 180;
+  const OZ = -140;
+  B.add(OX, 0.4, OZ, 66, 0.8, 50, 0x69b6e8);
+  B.add(OX, 0.5, OZ, 60, 1, 44, 0x3f8fd4);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    palm(B, OX + Math.cos(a) * 40, OZ + Math.sin(a) * 32, i * 5 + 7);
+  }
+  const stallCols = [0xd5202b, 0xf2a10a, 0x2c6bd6, 0x18a558];
+  for (let i = 0; i < 4; i++) {
+    const sx = OX - 46 + i * 18;
+    B.add(sx, 0.5, OZ + 40, 8, 5, 6, 0xe8d9ae, { studs: true });
+    B.add(sx, 5.5, OZ + 40, 10, 1.6, 8, stallCols[i]);
   }
 
   // Palms dotted around the sacred site.
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const r = 230 + hash2(i, 12) * 30;
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const r = 250 + hash2(i, 12) * 26;
     palm(B, Math.cos(a) * r, Math.sin(a) * r + 30, i * 3 + 2);
   }
 }
@@ -892,48 +1370,170 @@ function giza(B: Bricks): void {
 function bigben(B: Bricks): void {
   const tan = 0xcfae72;
   const dark = 0xb2945c;
-  const white = 0xf3efe6;
+  const light = 0xe8d9ae;
   const green = 0x3f5a4e;
   const black = 0x30343c;
+  const gold = 0xd8b84a;
 
-  // Clock tower
-  for (let y = 0; y < 52; y += 6.5) {
-    B.add(30, y, 0, 13, 6.5, 13, (y / 6.5) % 2 ? tan : dark);
+  const TX = 34; // clock tower centre
+  // Shaft with pale corner pilasters and glowing gothic window slits.
+  for (let y = 0; y < 74; y += 4.6) {
+    B.add(TX, y, 0, 17, 4.6, 17, Math.round(y / 4.6) % 2 ? tan : dark);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        B.add(TX + sx * 8.2, y, sz * 8.2, 2.4, 4.6, 2.4, light);
+      }
+    }
+    if (Math.round(y / 4.6) % 3 === 1 && y > 6) {
+      B.add(TX, y + 1, 8.9, 3.2, 2.8, 0.7, 0xfff0c0, { glow: true });
+      B.add(TX, y + 1, -8.9, 3.2, 2.8, 0.7, 0xfff0c0, { glow: true });
+    }
   }
-  B.add(30, 52, 0, 15, 10, 15, tan);
+
+  // Clock stage: gilded surrounds, glowing faces, black hands on all sides.
+  B.add(TX, 74, 0, 21, 14, 21, tan, { studs: true });
   for (const side of [-1, 1]) {
-    B.add(30 + side * 7.8, 55, 0, 1.2, 8, 8, white);
-    B.add(30 + side * 8.5, 56.5, 0, 0.8, 3, 3, black);
-    B.add(30, 55, side * 7.8, 8, 8, 1.2, white);
-    B.add(30, 56.5, side * 8.5, 3, 3, 0.8, black);
+    B.add(TX + side * 10.9, 76, 0, 0.8, 12, 12, gold);
+    B.add(TX + side * 11.3, 77, 0, 0.6, 10, 10, 0xfff6d8, { glow: true });
+    B.add(TX + side * 11.8, 80.5, 0, 0.5, 1.2, 4.5, black);
+    B.add(TX + side * 11.8, 79, 0, 0.5, 4.5, 1.2, black);
+    B.add(TX, 76, side * 10.9, 12, 12, 0.8, gold);
+    B.add(TX, 77, side * 11.3, 10, 10, 0.6, 0xfff6d8, { glow: true });
+    B.add(TX, 80.5, side * 11.8, 4.5, 1.2, 0.5, black);
+    B.add(TX, 79, side * 11.8, 1.2, 4.5, 0.5, black);
   }
-  B.add(30, 62, 0, 14, 3, 14, green);
-  B.add(30, 65, 0, 10, 3.5, 10, green);
-  B.add(30, 68.5, 0, 6, 3.5, 6, green);
-  B.add(30, 72, 0, 2.6, 4, 2.6, green);
-  B.add(30, 76, 0, 1.2, 6, 1.2, 0xd8b84a);
+
+  // Green spire crowned in gold.
+  B.add(TX, 88, 0, 19, 4, 19, green);
+  B.add(TX, 92, 0, 14, 4.5, 14, green);
+  B.add(TX, 96.5, 0, 9, 4.5, 9, green);
+  B.add(TX, 101, 0, 5, 4.5, 5, green);
+  B.add(TX, 105.5, 0, 2.6, 5, 2.6, green);
+  B.add(TX, 110.5, 0, 1.4, 7, 1.4, gold);
+  B.add(TX, 118, 0, 1.8, 1.8, 1.8, 0xffe9a0, { glow: true });
 
   // Union Jack flying beside the spire.
-  B.add(30, 82, 0, 0.7, 8, 0.7, 0xf4f4f2);
-  B.add(33, 86, 0, 3.2, 4.2, 0.4, 0x1a3a8f, { glow: true });
-  B.add(33, 86, 0.06, 3.2, 1.2, 0.4, 0xd5202b, { glow: true });
-  B.add(33, 86, 0.06, 1.0, 4.2, 0.4, 0xd5202b, { glow: true });
+  B.add(TX + 4, 112, 0, 0.7, 9, 0.7, 0xf4f4f2);
+  B.add(TX + 8, 117, 0, 4.4, 5.6, 0.5, 0x1a3a8f, { glow: true });
+  B.add(TX + 8, 117, 0.06, 4.4, 1.6, 0.5, 0xd5202b, { glow: true });
+  B.add(TX + 8, 117, 0.06, 1.4, 5.6, 0.5, 0xd5202b, { glow: true });
 
-  // Gilded clock surrounds so the faces catch the eye.
-  for (const side of [-1, 1]) {
-    B.add(30 + side * 8.9, 55, 0, 0.5, 9, 9, 0xd8b84a);
-    B.add(30, 55, side * 8.9, 9, 9, 0.5, 0xd8b84a);
+  // Palace of Westminster: long gothic hall with buttress ribs and lit windows.
+  B.add(-22, 0, 0, 82, 20, 28, tan, { studs: true });
+  for (let x = -58; x <= 12; x += 7) {
+    B.add(x, 20, 0, 2.2, 5, 28.8, dark);
+    B.add(x, 8, 14.2, 2, 8, 0.7, 0xfff0c0, { glow: true });
+    B.add(x, 8, -14.2, 2, 8, 0.7, 0xfff0c0, { glow: true });
+  }
+  B.add(-22, 20, 0, 82, 4.4, 13, dark);
+
+  // Victoria Tower with corner turrets.
+  B.add(-63, 0, 0, 20, 34, 20, tan, { studs: true });
+  B.add(-63, 34, 0, 22, 3, 22, dark);
+  B.add(-63, 37, 0, 12, 5, 12, green);
+  B.add(-63, 42, 0, 5, 4, 5, green);
+  B.add(-63, 46, 0, 1.2, 6, 1.2, gold);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      B.add(-63 + sx * 9.4, 30, sz * 9.4, 3, 10, 3, light);
+      B.add(-63 + sx * 9.4, 40, sz * 9.4, 1.6, 3, 1.6, gold);
+    }
   }
 
-  // Westminster hall
-  B.add(-10, 0, 0, 56, 14, 20, tan, { studs: true });
-  for (let x = -34; x <= 12; x += 6) {
-    B.add(x, 14, 0, 1.8, 4, 20.6, dark);
+  // Gilded uplights along the river facade.
+  for (let x = -55; x <= 45; x += 12) B.add(x, 1, 15.4, 1.2, 1.2, 1.2, 0xffd98a, { glow: true });
+}
+
+/**
+ * Bespoke London: Parliament Square, the Thames with Westminster Bridge, the
+ * London Eye, Tower Bridge, brick terraces, a glass City cluster, and the
+ * obligatory red buses and phone boxes.
+ */
+function londonDowntown(B: Bricks): void {
+  const asphalt = 0x3e434b;
+  const stone = 0xcfc6b2;
+  const water = 0x3a7fc4;
+  const brickRed = 0xb05b3e;
+  const brick2 = 0xc46a4a;
+  const cream = 0xf3e9d2;
+
+  // Parliament Square plaza + the ring road the traffic loop drives.
+  B.add(0, 0, 0, 104, 1.1, 104, 0xc9cdd3);
+  const R = 68;
+  for (let side = 0; side < 4; side++) {
+    const horizontal = side % 2 === 0;
+    const off = side < 2 ? R : -R;
+    if (horizontal) B.add(0, 0, off, R * 2 + 10, 0.9, 10, asphalt);
+    else B.add(off, 0, 0, 10, 0.9, R * 2 + 10, asphalt);
   }
-  B.add(-10, 14, 0, 56, 3.2, 9, dark);
-  B.add(-38, 0, 0, 13, 24, 13, tan);
-  B.add(-38, 24, 0, 10, 3, 10, green);
-  B.add(-38, 27, 0, 5, 3, 5, green);
+
+  // The Thames with stone embankments.
+  plate(B, 0, 100, 380, 40, -0.6, 1.6, water, 95);
+  plate(B, 0, 76, 380, 6, 0.5, 1.5, stone, 95);
+  plate(B, 0, 124, 380, 6, 0.5, 1.5, stone, 95);
+
+  // Westminster Bridge (green, like the real one) on the clock tower's axis.
+  B.add(34, 1.6, 100, 18, 1.8, 52, 0x4a7a52, { studs: true });
+  for (const s of [-1, 1]) B.add(34 + s * 8, 2.6, 100, 1.6, 2.4, 52, cream);
+  for (const lz of [82, 100, 118]) {
+    for (const s of [-1, 1]) {
+      B.add(34 + s * 8, 5, lz, 0.8, 3, 0.8, 0x33363c);
+      B.add(34 + s * 8, 8.6, lz, 1.2, 1.2, 1.2, 0xffd98a, { glow: true });
+    }
+  }
+
+  // The London Eye on the south bank, cabins lit at dusk.
+  ferrisWheel(B, 95, 145, 42, true);
+
+  // Tower Bridge downriver: twin gothic towers, road deck and high walkway.
+  const BX = -160;
+  for (const s of [-1, 1]) {
+    B.add(BX + s * 22, 0, 100, 14, 40, 14, stone, { studs: true });
+    B.add(BX + s * 22, 40, 100, 16, 3, 16, 0x53616f);
+    B.add(BX + s * 22, 43, 100, 6, 6, 6, 0x53616f);
+    B.add(BX + s * 22, 49, 100, 1.2, 4, 1.2, 0xd8b84a);
+  }
+  B.add(BX, 6, 100, 60, 2.5, 12, 0x3f6fb0, { studs: true });
+  B.add(BX, 34, 100, 44, 2.2, 6, 0x8fb4c9);
+  B.add(BX, 20, 100, 44, 1, 1.4, 0xbfd8ea);
+
+  // Brick terraces north of the square, chimneys and lit doorways included.
+  let tn = 0;
+  for (let x = -140; x <= 140; x += 25) {
+    if (Math.abs(x) < 82) continue;
+    for (const z of [-95, -125]) {
+      const h = 11 + hash2(tn, 9) * 5;
+      B.add(x, 0, z, 16, h, 14, tn % 2 ? brickRed : brick2, { studs: true });
+      B.add(x, h, z, 17, 2.2, 15, 0x53616f);
+      B.add(x, h + 2, z, 10, 2, 12, tn % 2 ? brick2 : brickRed);
+      B.add(x, 4, z + 7.2, 3, 3, 0.6, 0xffe9b8, { glow: true });
+      B.add(x + 4.5, h + 3.2, z - 3, 1.6, 3.5, 1.6, 0x9c4a3a);
+      tn++;
+    }
+  }
+
+  // A compact cluster of glass City towers.
+  const glass = [0x9ec6dd, 0x8fb4c9, 0x6f9ec4];
+  for (let i = 0; i < 4; i++) {
+    const gx = 108 + (i % 2) * 30;
+    const gz = -78 - Math.floor(i / 2) * 32;
+    const h = 34 + hash2(i, 13) * 22;
+    B.add(gx, 0, gz, 17, h, 17, glass[i % glass.length], { studs: true });
+    for (let y = 6; y < h - 3; y += 7) B.add(gx, y, gz, 17.6, 1.1, 17.6, 0xbfe0ff, { glow: true });
+    B.add(gx, h, gz, 8, 4, 8, glass[(i + 1) % glass.length]);
+  }
+
+  // Double-decker buses around the square + red phone boxes.
+  for (const [bx, bz, a] of [[-40, 62, 0], [52, -62, 0], [62, 30, Math.PI / 2]] as const) {
+    B.add(bx, 1, bz, 11, 4, 4.6, 0xd5202b, { ry: a, studs: true });
+    B.add(bx, 5, bz, 11, 3.6, 4.6, 0xd5202b, { ry: a });
+    B.add(bx, 5.4, bz, 11.2, 1.6, 4, 0xffe9b8, { ry: a, glow: true });
+  }
+  for (const [px, pz] of [[-52, 40], [40, 52], [-30, -56]] as const) {
+    B.add(px, 1, pz, 2.6, 5.5, 2.6, 0xd5202b);
+    B.add(px, 3.4, pz, 2.9, 1.6, 2.9, 0xffd9d0, { glow: true });
+    B.add(px, 6.5, pz, 3, 0.8, 3, 0xd5202b);
+  }
 }
 
 function burj(B: Bricks): void {
@@ -975,8 +1575,7 @@ function palm(B: Bricks, x: number, z: number, seed: number): void {
 }
 
 /** A vertical Ferris wheel of cabins, spokes and a support A-frame. */
-function ferrisWheel(B: Bricks, cx: number, cz: number): void {
-  const R = 34;
+function ferrisWheel(B: Bricks, cx: number, cz: number, R = 34, glowCabins = false): void {
   const hubY = 3 + R + 6;
   const spokes = 16;
   const cabinCols = [0xd6382c, 0x2c6bd6, 0xf7d354, 0x4cb227, 0x9d5cff, 0xff2e88];
@@ -989,7 +1588,7 @@ function ferrisWheel(B: Bricks, cx: number, cz: number): void {
       B.add(cx + Math.cos(a) * R * t, hubY + Math.sin(a) * R * t, cz, 1.2, 1.2, 1.2, 0xdfe6ec);
     }
     // cabin
-    B.add(x, y - 2.4, cz, 5, 4.5, 5, cabinCols[i % cabinCols.length], { studs: true });
+    B.add(x, y - 2.4, cz, 5, 4.5, 5, cabinCols[i % cabinCols.length], { studs: true, glow: glowCabins });
   }
   // hub + rim caps
   B.add(cx, hubY, cz, 5, 5, 6, 0xb7c0c8);
@@ -1249,7 +1848,7 @@ export class LandmarkManager {
       B.curveScale = S;
 
       switch (def.id) {
-        case 'eiffel': eiffel(B); break;
+        case 'eiffel': eiffel(B); parisDowntown(B); break;
         case 'nyc': nyc(B); break;
         case 'taj': taj(B); break;
         case 'wall': greatWall(B, this.terrain, dir, anchorH); break;
@@ -1257,28 +1856,37 @@ export class LandmarkManager {
         case 'colosseum': colosseum(B); break;
         case 'fuji': fuji(B); break;
         case 'giza': giza(B); break;
-        case 'bigben': bigben(B); break;
+        case 'bigben': bigben(B); londonDowntown(B); break;
         case 'burj': burj(B); break;
         case 'cali': caliBeach(B); break;
       }
 
       const cfg = CITY_CONFIGS[def.id];
       const seed = Math.abs(def.lat * 7 + def.lon);
-      if (cfg?.style) city(B, cfg.style, seed);
+      // Landmarks with bespoke downtowns (Paris, London) build their own core;
+      // everyone else gets the generic ring city.
+      if (cfg?.style && !cfg.custom) city(B, cfg.style, seed);
       // Fill the flat pad out to its edge with a mid-rise belt so the landmark
       // isn't marooned on empty lawn. Skip the mountain and the wall.
       if (cfg?.style && def.flat && def.id !== 'fuji') {
-        const rInner = cfg.style.rings[cfg.style.rings.length - 1] + 14;
+        const rInner = cfg.custom ? cfg.custom.rInner : cfg.style.rings[cfg.style.rings.length - 1] + 14;
         const rOuter = (def.flat / S) * 0.9;
-        if (rOuter > rInner + 40) suburbs(B, cfg.style, seed + 91, rInner, rOuter);
+        if (rOuter > rInner + 40) suburbs(B, cfg.style, seed + 91, rInner, rOuter, cfg.custom?.avoid);
       }
 
       const group = B.build();
       if (def.id === 'nyc') {
         // Attach the animated Times Square billboards as children so they ride
-        // the group's placement (and scale) on the globe.
+        // the group's placement (and scale) on the globe. Each screen is bent
+        // onto the sphere exactly like the tower bricks it sits on.
         const screens = createAdScreens([...NYC_AD_TOWERS, ...NYC_ADS_SCATTERED]);
-        for (const o of screens.objects) group.add(o);
+        const rLocal = PLANET_R / S;
+        const qTilt = new THREE.Quaternion();
+        for (const o of screens.objects) {
+          sphereMap(o.position.x, o.position.y, o.position.z, rLocal, o.position, qTilt);
+          o.quaternion.premultiply(qTilt);
+          group.add(o);
+        }
         this.ads.push(screens);
       }
       group.scale.setScalar(S);
@@ -1315,11 +1923,15 @@ export class LandmarkManager {
   }
 
   update(planePos: THREE.Vector3): void {
+    // Nearest landmark within its radius wins — with the bigger trigger zones
+    // an array-order first-match can announce a neighbouring city instead.
     let near: PlacedLandmark | null = null;
+    let nearDist = Infinity;
     for (const item of this.items) {
-      if (planePos.distanceTo(item.worldPos) < item.def.radius) {
+      const d = planePos.distanceTo(item.worldPos);
+      if (d < item.def.radius && d < nearDist) {
         near = item;
-        break;
+        nearDist = d;
       }
     }
 

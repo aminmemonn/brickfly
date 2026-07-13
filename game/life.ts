@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { basisQuat } from './util';
+import { basisQuat, curvatureDrop } from './util';
 import { ABS_SOLID_MATERIAL, createABSColoredMaterial } from './brick-material';
 
 /** A city's local frame on the sphere, produced by LandmarkManager. */
@@ -158,7 +158,9 @@ export class CityLife {
       qYaw.setFromAxisAngle(Y_AXIS, -Math.atan2(dz, dx));
       qFinal.copy(car.cityQuat).multiply(qYaw);
 
-      const ly = car.frame.groundY + 1.1 * LIFE_SCALE;
+      // Drop onto the sphere so cars hug the street instead of floating at the
+      // ring corners (the streets themselves are curvature-mapped).
+      const ly = car.frame.groundY + 1.1 * LIFE_SCALE - curvatureDrop(lx, lz);
       vPos.copy(car.frame.origin)
         .addScaledVector(car.frame.east, lx)
         .addScaledVector(car.frame.north, lz)
@@ -183,7 +185,7 @@ export class CityLife {
       qYaw.setFromAxisAngle(Y_AXIS, heading);
       qFinal.copy(p.cityQuat).multiply(qYaw);
 
-      const base = p.frame.groundY + bob;
+      const base = p.frame.groundY + bob - curvatureDrop(lx, lz);
       vPos.copy(p.frame.origin)
         .addScaledVector(p.frame.east, lx)
         .addScaledVector(p.frame.north, lz)
