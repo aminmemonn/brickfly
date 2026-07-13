@@ -20,7 +20,9 @@ export const LANDMARK_SCALE: Record<string, number> = {
   nyc: 3.4,
   eiffel: 8.0,
   bigben: 8.5,
-  colosseum: 9.0,
+  // 7 keeps the arena colossal; at 9 the ring city spread so thin that Rome
+  // read as empty lawn with a few lonely giant houses.
+  colosseum: 7.0,
   taj: 6.0,
   sydney: 6.0,
   burj: 5.5,
@@ -283,9 +285,9 @@ const CITY_CONFIGS: Record<
       floors: [4, 8],
       plaza: 58,
       road: 74,
-      rings: [94, 124],
-      perRing: [11, 14],
-      trees: 8
+      rings: [82, 108, 136],
+      perRing: [14, 18, 22],
+      trees: 14
     },
     frame: { ring: 74, plaza: 54, groundY: 1.4 }
   },
@@ -479,8 +481,8 @@ function suburbs(
   // Bright accent roofs keep the belt colourful rather than a grey slab.
   const ACCENTS = [0xd6382c, 0x2c6bd6, 0xf2a10a, 0x18a558, 0x9d5cff, 0x2e9e9b, 0xff7a1a];
   let n = 0;
-  for (let r = rInner + 22; r < rOuter - 8; r += 28) {
-    const count = Math.max(8, Math.floor((2 * Math.PI * r) / 38));
+  for (let r = rInner + 20; r < rOuter - 8; r += 24) {
+    const count = Math.max(10, Math.floor((2 * Math.PI * r) / 32));
     for (let i = 0; i < count; i++) {
       const a = ((i + (Math.round(r) % 2 ? 0.5 : 0)) / count) * Math.PI * 2;
       // keep the four cardinal avenues open
@@ -1195,19 +1197,21 @@ function colosseum(B: Bricks): void {
     B.add(gx + (gx > 0 ? -2 : 2), 6, gz, 0.6, 4, 0.6, 0xc9d2da);
   }
 
-  // Fallen columns and rubble scattered outside the walls.
-  for (let i = 0; i < 14; i++) {
-    const a = hash2(i, 61) * Math.PI * 2;
-    const rr = 58 + hash2(i, 63) * 14;
+  // Fallen columns resting on the plaza just outside the walls — kept in a
+  // tight archaeological ring so they don't read as stray debris on the lawn.
+  for (let i = 0; i < 10; i++) {
+    const a = 0.5 + (i / 10) * Math.PI * 2;
+    if (Math.min(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) < 0.14) continue; // keep the avenues clear
+    const rr = 52 + hash2(i, 63) * 4;
     const x = Math.cos(a) * rr;
     const z = Math.sin(a) * rr;
-    if (hash2(i, 67) > 0.5) {
-      B.add(x, 0, z, 2.6, 2.6, 9, stone, { ry: a * 3 });
-      B.add(x + 3, 0, z + 2, 2.4, 2.4, 2.4, dark);
+    if (hash2(i, 67) > 0.45) {
+      B.add(x, 1.2, z, 2.2, 2.2, 7, stone, { ry: -a + hash2(i, 68) });
+      B.add(x + 2, 1.2, z + 1.6, 2, 2, 2, dark);
     } else {
-      const ch = 7 + hash2(i, 69) * 6;
-      B.add(x, 0, z, 3, ch, 3, i % 2 ? light : stone);
-      B.add(x, ch, z, 4, 1.6, 4, dark);
+      const ch = 6 + hash2(i, 69) * 5;
+      B.add(x, 1.2, z, 2.6, ch, 2.6, i % 2 ? light : stone);
+      B.add(x, 1.2 + ch, z, 3.6, 1.4, 3.6, dark);
     }
   }
 

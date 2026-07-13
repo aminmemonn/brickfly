@@ -219,9 +219,11 @@ export class Game {
       const def = LANDMARKS.find((lm) => lm.id === at);
       if (def) {
         // Arrive a fixed world distance out (not degrees, which balloon at
-        // high latitudes) and high enough to clear the tallest builds.
+        // high latitudes) and high enough to clear the tallest builds. Close
+        // enough that the arrival lands inside THIS landmark's discovery zone
+        // rather than a neighbour's.
         const s = landmarkScale(def.id);
-        const offLon = (900 + 260 * s) / (PLANET_R * DEG2RAD * Math.cos(def.lat * DEG2RAD));
+        const offLon = (700 + 220 * s) / (PLANET_R * DEG2RAD * Math.cos(def.lat * DEG2RAD));
         this.flight.reset(def.lat, def.lon - offLon, 90, 200 + 130 * s);
       }
     }
@@ -460,10 +462,13 @@ export class Game {
     });
 
     // Distance haze: match the horizon tint, disabled for the menu's
-    // from-space view of the whole planet.
+    // from-space view of the whole planet. Tuned so objects at horizon range
+    // (~5600 at cruise altitude) carry real aerial perspective — colossal
+    // landmarks a country away must fade to silhouettes, not read as
+    // next-door neighbours.
     const menuView = this.mode === 'menu';
-    this.fogNear = menuView ? 62000 : 2600;
-    this.fogFar = menuView ? 88000 : 34000;
+    this.fogNear = menuView ? 62000 : 1500;
+    this.fogFar = menuView ? 88000 : 11500;
     this.fogColor.copy(FOG_NIGHT).lerp(FOG_DAY, day).lerp(FOG_GOLDEN, golden * 0.5);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.fogColor);

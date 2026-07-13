@@ -21,7 +21,7 @@ export const LANDMARKS: LandmarkDef[] = [
     lat: 48.858,
     lon: 2.294,
     fact: 'Rebuilt here from lattice bricks — the real one has 2.5 million rivets. Ours needs zero.',
-    radius: 3000,
+    radius: 2400,
     flat: 1700,
     plateau: 10
   },
@@ -90,12 +90,13 @@ export const LANDMARKS: LandmarkDef[] = [
     name: 'Colosseum',
     location: 'Rome, Italy',
     // Nudged from the real coordinates so Rome, Paris and Giza sit a proper
-    // flight apart on this planet instead of sharing suburbs.
-    lat: 40,
-    lon: 17,
+    // flight apart on this planet instead of sharing suburbs (at (40,17) the
+    // Rome and Giza pads physically merged into one continuous mega-pad).
+    lat: 38,
+    lon: 13,
     fact: 'Two thousand years old and still standing — mostly because nobody found the brick separator.',
     radius: 2400,
-    flat: 1700,
+    flat: 1400,
     plateau: 10
   },
   {
@@ -113,11 +114,13 @@ export const LANDMARKS: LandmarkDef[] = [
     id: 'giza',
     name: 'Pyramids of Giza',
     location: 'Giza, Egypt',
-    lat: 29.979,
-    lon: 31.134,
+    // Shifted south-east: the colossal pyramids are visible for thousands of
+    // units, so Egypt needs real distance from Rome to read as another land.
+    lat: 27,
+    lon: 36,
     fact: 'Colossal step pyramids with a watchful Sphinx and glyph-carved obelisks. Built one brick at a time.',
     radius: 3200,
-    flat: 2400,
+    flat: 2200,
     plateau: 8
   },
   {

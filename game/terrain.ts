@@ -9,11 +9,12 @@ import { LANDMARKS } from './landmark-data';
  * Overlapping caps approximate real-world landmass shapes.
  */
 const CONTINENTS: [number, number, number][] = [
-  // Africa
+  // Africa (extra cap keeps Giza's relocated desert solidly on land)
   [2, 18, 0.42], [18, 8, 0.3], [28, 25, 0.22], [-15, 25, 0.28], [-19, 47, 0.09],
+  [26.5, 36, 0.11],
   // Europe (Britain rides north-west with Brick London; Italy hosts Rome)
   [48, 12, 0.2], [60, -18, 0.13], [63, 15, 0.18], [41, -4, 0.13], [55, 40, 0.24],
-  [40.5, 16.5, 0.1],
+  [38.5, 13, 0.09],
   // Asia
   [62, 90, 0.42], [55, 125, 0.3], [38, 65, 0.25], [24, 45, 0.24], [32, 55, 0.2],
   [22, 78, 0.24], [32, 105, 0.33], [45, 118, 0.22], [36, 138, 0.12], [14, 102, 0.16],

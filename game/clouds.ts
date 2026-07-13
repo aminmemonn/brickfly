@@ -31,19 +31,22 @@ export function buildClouds(count = 150): THREE.Group {
     basisQuat(east, up, north, q);
 
     // Layered deck: low cumulus, mid puffs, high thin wisps; a few grey
-    // rain-bellied clusters for variety.
+    // rain-bellied clusters for variety. Every cluster keeps a fat core slab
+    // with satellites overlapping it — sparse clusters of small boxes fall
+    // apart into lone cubes that read as floating glitches at flight level.
     const layer = rand();
-    const alt = PLANET_R + 320 + layer * 520;
+    const alt = PLANET_R + 420 + layer * 480;
     const grey = rand() > 0.85 ? 0.72 : 0.95 + rand() * 0.05;
     const center = up.clone().multiplyScalar(alt);
     const big = rand() > 0.6;
-    const parts = big ? 6 + Math.floor(rand() * 7) : 3 + Math.floor(rand() * 4);
-    const spread = big ? 170 : 100;
+    const parts = big ? 7 + Math.floor(rand() * 6) : 5 + Math.floor(rand() * 4);
+    const spread = big ? 150 : 80;
     for (let p = 0; p < parts; p++) {
-      const ox = (rand() - 0.5) * spread;
-      const oz = (rand() - 0.5) * spread * 0.62;
-      const oy = (rand() - 0.5) * 18;
-      const w = (big ? 30 : 22) + rand() * 52;
+      const core = p === 0;
+      const ox = core ? 0 : (rand() - 0.5) * spread;
+      const oz = core ? 0 : (rand() - 0.5) * spread * 0.62;
+      const oy = (rand() - 0.5) * 12;
+      const w = (core ? 64 : 34) + rand() * (big ? 52 : 34);
       const pos = center
         .clone()
         .addScaledVector(east, ox)
@@ -52,7 +55,7 @@ export function buildClouds(count = 150): THREE.Group {
       boxes.push({
         pos,
         quat: q.clone(),
-        scale: new THREE.Vector3(w, (layer > 0.75 ? 5 : 9) + rand() * 8, w * (0.55 + rand() * 0.4)),
+        scale: new THREE.Vector3(w, (layer > 0.75 ? 6 : 10) + rand() * 8, w * (0.55 + rand() * 0.4)),
         tint: grey
       });
     }
