@@ -9,6 +9,8 @@ export interface Settings {
 export interface QualityPreset {
   /** Half-extent of the near-field brick grid, in cells. */
   fieldN: number;
+  /** Half-extent of the coarse far-field slab grid, in far cells (5 bricks each). */
+  farN: number;
   /** Enables the 200-unit cylinder-to-normal stud LOD. */
   studs: boolean;
   shadows: boolean;
@@ -16,9 +18,9 @@ export interface QualityPreset {
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
-  low: { fieldN: 20, studs: false, shadows: false, maxDpr: 1 },
-  medium: { fieldN: 30, studs: true, shadows: false, maxDpr: 1.5 },
-  high: { fieldN: 44, studs: true, shadows: true, maxDpr: 2 }
+  low: { fieldN: 20, farN: 30, studs: false, shadows: false, maxDpr: 1 },
+  medium: { fieldN: 30, farN: 36, studs: true, shadows: false, maxDpr: 1.5 },
+  high: { fieldN: 44, farN: 42, studs: true, shadows: true, maxDpr: 2 }
 };
 
 const KEY = 'brickfly.settings';

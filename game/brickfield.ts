@@ -13,8 +13,16 @@ import {
 
 const MAX_LAND = 9500;
 const MAX_STUDS = 12500;
+const MAX_FAR = 7500;
 
 const ANG_STEP = BRICK_SIZE / PLANET_R;
+// Far tier: one coarse slab stands in for a 5x5 patch of bricks, pushing the
+// voxel horizon from ~440 to ~2000+ units so fast flight never outruns it.
+const FAR_MULT = 5;
+const ANG_STEP_FAR = ANG_STEP * FAR_MULT;
+// Far slabs sit fractionally lower than true brick tops so the fine tier
+// always wins where the two overlap (no z-fighting at the seam).
+const FAR_SINK = 1.2;
 const LAT_LIMIT = 1.45;
 const BRICK_GAP = 0.14;
 // Includes enough travel headroom for the near-field rebuild cadence at the
@@ -40,13 +48,18 @@ export class BrickField {
 
   private land: THREE.InstancedMesh;
   private studs: THREE.InstancedMesh;
+  private farLand: THREE.InstancedMesh;
   private studGrid: THREE.InstancedBufferAttribute;
 
   private preset: QualityPreset;
   private lastRow = Number.MIN_SAFE_INTEGER;
   private lastCol = Number.MIN_SAFE_INTEGER;
+  private lastFarRow = Number.MIN_SAFE_INTEGER;
+  private lastFarCol = Number.MIN_SAFE_INTEGER;
   private cooldown = 0;
+  private farCooldown = 0;
   private dirty = true;
+  private farDirty = true;
   private studsWereNear = false;
 
   constructor(private terrain: Terrain, preset: QualityPreset) {
@@ -59,18 +72,25 @@ export class BrickField {
 
     this.studs = new THREE.InstancedMesh(makeABSStudGeometry(), ABS_STUD_MATERIAL, MAX_STUDS);
 
-    for (const mesh of [this.land, this.studs]) {
+    // Coarse slabs never show stud normals — they live beyond the LOD range.
+    const farGeo = makeABSBrickGeometry();
+    farGeo.setAttribute('instanceStudGrid', makeStudGridAttribute(MAX_FAR));
+    this.farLand = new THREE.InstancedMesh(farGeo, ABS_BRICK_MATERIAL, MAX_FAR);
+
+    for (const mesh of [this.land, this.studs, this.farLand]) {
       mesh.frustumCulled = false;
       mesh.count = 0;
       this.group.add(mesh);
     }
     this.land.receiveShadow = true;
     this.studs.receiveShadow = true;
+    this.farLand.receiveShadow = true;
   }
 
   setQuality(preset: QualityPreset): void {
     this.preset = preset;
     this.dirty = true;
+    this.farDirty = true;
   }
 
   setShadows(enabled: boolean): void {
@@ -80,30 +100,106 @@ export class BrickField {
 
   update(dt: number, playerDir: THREE.Vector3, cameraPosition: THREE.Vector3): void {
     this.cooldown -= dt;
+    this.farCooldown -= dt;
     const studsNear = cameraPosition.length() - PLANET_R < STUD_GEOMETRY_RADIUS + BRICK_H * 3;
     if (studsNear !== this.studsWereNear) {
       this.studsWereNear = studsNear;
       this.dirty = true;
     }
-    if (this.cooldown > 0 && !this.dirty) return;
 
     const { lat, lon } = dirToLatLon(playerDir);
-    const row = Math.floor((lat + Math.PI / 2) / ANG_STEP);
-    const latC = -Math.PI / 2 + (row + 0.5) * ANG_STEP;
-    const cols = Math.max(8, Math.round((2 * Math.PI * Math.cos(latC)) / ANG_STEP));
-    const col = Math.floor((((lon % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / ((2 * Math.PI) / cols));
+    let rebuiltNear = false;
 
-    const moved = Math.abs(row - this.lastRow) > 2 || Math.abs(col - this.lastCol) > 2;
-    if (!moved && !this.dirty) {
-      this.cooldown = 0.2;
-      return;
+    if (this.cooldown <= 0 || this.dirty) {
+      const row = Math.floor((lat + Math.PI / 2) / ANG_STEP);
+      const latC = -Math.PI / 2 + (row + 0.5) * ANG_STEP;
+      const cols = Math.max(8, Math.round((2 * Math.PI * Math.cos(latC)) / ANG_STEP));
+      const col = Math.floor((((lon % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / ((2 * Math.PI) / cols));
+
+      const moved = Math.abs(row - this.lastRow) > 2 || Math.abs(col - this.lastCol) > 2;
+      if (moved || this.dirty) {
+        this.lastRow = row;
+        this.lastCol = col;
+        this.dirty = false;
+        this.cooldown = this.studsWereNear ? 0.08 : 0.16;
+        this.rebuild(row, lon, cameraPosition);
+        rebuiltNear = true;
+      } else {
+        this.cooldown = 0.15;
+      }
     }
 
-    this.lastRow = row;
-    this.lastCol = col;
-    this.dirty = false;
-    this.cooldown = this.studsWereNear ? 0.08 : 0.25;
-    this.rebuild(row, lon, cameraPosition);
+    // The far tier rebuilds on its own slower cadence and never in the same
+    // frame as the near tier, so the worst-case CPU spike stays bounded.
+    if (!rebuiltNear && (this.farCooldown <= 0 || this.farDirty)) {
+      const rowF = Math.floor((lat + Math.PI / 2) / ANG_STEP_FAR);
+      const latF = -Math.PI / 2 + (rowF + 0.5) * ANG_STEP_FAR;
+      const colsF = Math.max(8, Math.round((2 * Math.PI * Math.cos(latF)) / ANG_STEP_FAR));
+      const colF = Math.floor((((lon % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / ((2 * Math.PI) / colsF));
+
+      const movedF = Math.abs(rowF - this.lastFarRow) > 1 || Math.abs(colF - this.lastFarCol) > 1;
+      if (movedF || this.farDirty) {
+        this.lastFarRow = rowF;
+        this.lastFarCol = colF;
+        this.farDirty = false;
+        this.farCooldown = 0.6;
+        this.rebuildFar(rowF, lon);
+      } else {
+        this.farCooldown = 0.2;
+      }
+    }
+  }
+
+  /** Coarse slab terrain from the fine field's edge out to the haze. */
+  private rebuildFar(rowCenter: number, lonCenter: number): void {
+    const { farN } = this.preset;
+    const terrain = this.terrain;
+
+    let fi = 0;
+    for (let dr = -farN; dr <= farN; dr++) {
+      const row = rowCenter + dr;
+      const latC = -Math.PI / 2 + (row + 0.5) * ANG_STEP_FAR;
+      if (Math.abs(latC) > LAT_LIMIT) continue;
+
+      const cols = Math.max(8, Math.round((2 * Math.PI * Math.cos(latC)) / ANG_STEP_FAR));
+      const lonStep = (2 * Math.PI) / cols;
+      const colCenter = Math.floor((((lonCenter % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / lonStep);
+      const k = Math.min(farN, Math.floor(cols / 2));
+
+      const cellW = lonStep * Math.cos(latC) * PLANET_R;
+      const cellD = ANG_STEP_FAR * PLANET_R;
+
+      for (let dc = -k; dc <= k; dc++) {
+        const c = (((colCenter + dc) % cols) + cols) % cols;
+        const lonC = (c + 0.5) * lonStep;
+        latLonToDir(latC, lonC, tmpDir);
+        const h = terrain.height(tmpDir);
+        if (h <= 0.6) continue;
+        if (fi >= MAX_FAR) continue;
+
+        tmpUp.copy(tmpDir);
+        tangentBasis(tmpUp, tmpEast, tmpNorth);
+        basisQuat(tmpEast, tmpUp, tmpNorth, tmpQuat);
+
+        const hq = Math.ceil(h / BRICK_H) * BRICK_H;
+        const slabW = Math.max(0.1, cellW - BRICK_GAP * 2);
+        const slabD = Math.max(0.1, cellD - BRICK_GAP * 2);
+        const bodyH = Math.min(slabW, slabD) / BRICK_ASPECT;
+        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - FAR_SINK - bodyH / 2);
+        tmpScale.set(slabW, bodyH, slabD);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        this.farLand.setMatrixAt(fi, tmpMat);
+
+        terrain.colorAt(tmpDir, h, tmpCol);
+        tmpCol.multiplyScalar(0.98 + hash2(row, c) * 0.08);
+        this.farLand.setColorAt(fi, tmpCol);
+        fi++;
+      }
+    }
+
+    this.farLand.count = fi;
+    this.farLand.instanceMatrix.needsUpdate = true;
+    if (this.farLand.instanceColor) this.farLand.instanceColor.needsUpdate = true;
   }
 
   private rebuild(rowCenter: number, lonCenter: number, cameraPosition: THREE.Vector3): void {

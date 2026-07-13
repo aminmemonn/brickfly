@@ -347,7 +347,9 @@ export class Game {
     }
 
     if (this.mode !== 'menu') {
-      vTmp.copy(this.flight.pos).normalize();
+      // Centre the brick field ahead of the flight path so terrain
+      // materialises where the plane is going, not where it has been.
+      vTmp.copy(this.flight.pos).addScaledVector(this.flight.velocity, 0.55).normalize();
       this.field.update(dt, vTmp, this.camera.position);
       this.rig.update(dt, this.camera, this.flight, this.flight.speed);
     } else {
