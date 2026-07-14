@@ -13,16 +13,18 @@ import {
 
 const MAX_LAND = 9500;
 const MAX_STUDS = 12500;
-const MAX_FAR = 7500;
+const MAX_FAR = 10500;
 
 const ANG_STEP = BRICK_SIZE / PLANET_R;
-// Far tier: one coarse slab stands in for a 5x5 patch of bricks, pushing the
-// voxel horizon from ~440 to ~2000+ units so fast flight never outruns it.
-const FAR_MULT = 5;
+// Far tier: one coarse slab stands in for a 4x4 patch of bricks, pushing the
+// voxel horizon from ~440 to ~2000 units so fast flight never outruns it. At
+// cruise altitude almost everything in view is beyond the fine field, so the
+// slab size directly sets how "bricky" the world reads from the air.
+const FAR_MULT = 4;
 const ANG_STEP_FAR = ANG_STEP * FAR_MULT;
-// Far slabs sit fractionally lower than true brick tops so the fine tier
-// always wins where the two overlap (no z-fighting at the seam).
-const FAR_SINK = 1.2;
+// Far slabs sit fractionally lower than their own quantized top so they can
+// never be coplanar with fine-tier brick tops (no z-fighting at the seam).
+const FAR_SINK = 0.4;
 const LAT_LIMIT = 1.45;
 const BRICK_GAP = 0.14;
 // Includes enough travel headroom for the near-field rebuild cadence at the
@@ -61,6 +63,7 @@ export class BrickField {
   private dirty = true;
   private farDirty = true;
   private studsWereNear = false;
+  private farRowPrev = new Float32Array(0);
 
   constructor(private terrain: Terrain, preset: QualityPreset) {
     this.preset = preset;
@@ -143,7 +146,7 @@ export class BrickField {
         this.lastFarCol = colF;
         this.farDirty = false;
         this.farCooldown = 0.6;
-        this.rebuildFar(rowF, lon);
+        this.rebuildFar(rowF, lat, lon);
       } else {
         this.farCooldown = 0.2;
       }
@@ -151,9 +154,20 @@ export class BrickField {
   }
 
   /** Coarse slab terrain from the fine field's edge out to the haze. */
-  private rebuildFar(rowCenter: number, lonCenter: number): void {
-    const { farN } = this.preset;
+  private rebuildFar(rowCenter: number, latCenter: number, lonCenter: number): void {
+    const { farN, fieldN } = this.preset;
     const terrain = this.terrain;
+
+    // Angular half-extents of the fine field: far cells fully under it are
+    // skipped; cells on its rim get no slope padding so they stay tucked
+    // beneath the fine bricks instead of poking up through them.
+    const nearHalf = (fieldN - 2) * ANG_STEP;
+    const rimHalf = (fieldN + 6) * ANG_STEP;
+
+    const rowWidth = 2 * farN + 1;
+    if (this.farRowPrev.length < rowWidth) this.farRowPrev = new Float32Array(rowWidth);
+    const rowPrev = this.farRowPrev;
+    rowPrev.fill(Number.NaN);
 
     let fi = 0;
     for (let dr = -farN; dr <= farN; dr++) {
@@ -168,23 +182,48 @@ export class BrickField {
 
       const cellW = lonStep * Math.cos(latC) * PLANET_R;
       const cellD = ANG_STEP_FAR * PLANET_R;
+      const cosLat = Math.cos(latC);
+      let hPrev = Number.NaN;
 
       for (let dc = -k; dc <= k; dc++) {
         const c = (((colCenter + dc) % cols) + cols) % cols;
         const lonC = (c + 0.5) * lonStep;
         latLonToDir(latC, lonC, tmpDir);
         const h = terrain.height(tmpDir);
+
+        // Terrain slope estimated from the neighbours we already sampled.
+        // A single centre sample under-reads a 50-unit cell on any slope and
+        // the smooth globe pokes through the slab in contour-shaped holes;
+        // padding the quantized height by the local relief closes them.
+        const prevRowH = rowPrev[dc + farN];
+        let pad = 1;
+        if (Number.isFinite(hPrev)) pad = Math.max(pad, Math.abs(h - hPrev) * 0.6);
+        if (Number.isFinite(prevRowH)) pad = Math.max(pad, Math.abs(h - prevRowH) * 0.6);
+        pad = Math.min(pad, 30);
+        rowPrev[dc + farN] = h;
+        hPrev = h;
+
         if (h <= 0.6) continue;
         if (fi >= MAX_FAR) continue;
+
+        let dl = lonC - lonCenter;
+        dl = Math.atan2(Math.sin(dl), Math.cos(dl));
+        const inNearLat = Math.abs(latC - latCenter) < nearHalf;
+        if (inNearLat && Math.abs(dl) * cosLat < nearHalf) continue; // hidden under the fine field
+        const onRim = Math.abs(latC - latCenter) < rimHalf && Math.abs(dl) * cosLat < rimHalf;
+        if (onRim) pad = 0;
 
         tmpUp.copy(tmpDir);
         tangentBasis(tmpUp, tmpEast, tmpNorth);
         basisQuat(tmpEast, tmpUp, tmpNorth, tmpQuat);
 
-        const hq = Math.ceil(h / BRICK_H) * BRICK_H;
+        const hq = Math.ceil((h + pad) / BRICK_H) * BRICK_H;
         const slabW = Math.max(0.1, cellW - BRICK_GAP * 2);
         const slabD = Math.max(0.1, cellD - BRICK_GAP * 2);
-        const bodyH = Math.min(slabW, slabD) / BRICK_ASPECT;
+        // Deeper than the mould proportion, and deeper again by the slope pad:
+        // the pad lifts the top to cover the uphill edge, so the body must grow
+        // downward too or the slab hovers over the downhill side of the cell.
+        const bodyH = Math.min(slabW, slabD) / 1.2 + pad + 8;
         tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - FAR_SINK - bodyH / 2);
         tmpScale.set(slabW, bodyH, slabD);
         tmpMat.compose(tmpPos, tmpQuat, tmpScale);
@@ -200,6 +239,18 @@ export class BrickField {
     this.farLand.count = fi;
     this.farLand.instanceMatrix.needsUpdate = true;
     if (this.farLand.instanceColor) this.farLand.instanceColor.needsUpdate = true;
+    this.publishDebug();
+  }
+
+  /** Live instance counts for the verification harness (window.__bf). */
+  private publishDebug(): void {
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __bf?: object }).__bf = {
+        near: this.land.count,
+        studs: this.studs.count,
+        far: this.farLand.count
+      };
+    }
   }
 
   private rebuild(rowCenter: number, lonCenter: number, cameraPosition: THREE.Vector3): void {
@@ -286,5 +337,6 @@ export class BrickField {
     this.studGrid.needsUpdate = true;
     if (this.land.instanceColor) this.land.instanceColor.needsUpdate = true;
     if (this.studs.instanceColor) this.studs.instanceColor.needsUpdate = true;
+    this.publishDebug();
   }
 }

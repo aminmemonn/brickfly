@@ -35,18 +35,21 @@ export function buildClouds(count = 150): THREE.Group {
     // with satellites overlapping it — sparse clusters of small boxes fall
     // apart into lone cubes that read as floating glitches at flight level.
     const layer = rand();
-    const alt = PLANET_R + 420 + layer * 480;
+    const alt = PLANET_R + 460 + layer * 460;
     const grey = rand() > 0.85 ? 0.72 : 0.95 + rand() * 0.05;
     const center = up.clone().multiplyScalar(alt);
     const big = rand() > 0.6;
     const parts = big ? 7 + Math.floor(rand() * 6) : 5 + Math.floor(rand() * 4);
-    const spread = big ? 150 : 80;
+    const coreW = (big ? 74 : 60) + rand() * 46;
     for (let p = 0; p < parts; p++) {
       const core = p === 0;
-      const ox = core ? 0 : (rand() - 0.5) * spread;
-      const oz = core ? 0 : (rand() - 0.5) * spread * 0.62;
-      const oy = (rand() - 0.5) * 12;
-      const w = (core ? 64 : 34) + rand() * (big ? 52 : 34);
+      const w = core ? coreW : 30 + rand() * (big ? 46 : 30);
+      // Satellite offsets are bounded by the two half-widths so every box
+      // overlaps the core slab — free-floating satellites read as glitch
+      // cubes when the flight path passes through the deck.
+      const ox = core ? 0 : (rand() - 0.5) * (coreW + w) * 0.75;
+      const oz = core ? 0 : (rand() - 0.5) * (coreW + w) * 0.5;
+      const oy = (rand() - 0.5) * 10;
       const pos = center
         .clone()
         .addScaledVector(east, ox)
