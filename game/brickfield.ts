@@ -192,14 +192,15 @@ export class BrickField {
         const h = terrain.height(tmpDir);
 
         // Terrain slope estimated from the neighbours we already sampled.
-        // A single centre sample under-reads a 50-unit cell on any slope and
-        // the smooth globe pokes through the slab in contour-shaped holes;
-        // padding the quantized height by the local relief closes them.
+        // A single centre sample under-reads a 40-unit cell on any slope and
+        // the smooth globe pokes above the flat slab top at the cell's uphill
+        // edge; padding the top by half the local relief closes that sliver
+        // without lifting the surface enough to look inflated.
         const prevRowH = rowPrev[dc + farN];
-        let pad = 1;
-        if (Number.isFinite(hPrev)) pad = Math.max(pad, Math.abs(h - hPrev) * 0.6);
-        if (Number.isFinite(prevRowH)) pad = Math.max(pad, Math.abs(h - prevRowH) * 0.6);
-        pad = Math.min(pad, 30);
+        let pad = 0.5;
+        if (Number.isFinite(hPrev)) pad = Math.max(pad, Math.abs(h - hPrev) * 0.55);
+        if (Number.isFinite(prevRowH)) pad = Math.max(pad, Math.abs(h - prevRowH) * 0.55);
+        pad = Math.min(pad, 14);
         rowPrev[dc + farN] = h;
         hPrev = h;
 
@@ -217,20 +218,29 @@ export class BrickField {
         tangentBasis(tmpUp, tmpEast, tmpNorth);
         basisQuat(tmpEast, tmpUp, tmpNorth, tmpQuat);
 
-        const hq = Math.ceil((h + pad) / BRICK_H) * BRICK_H;
-        const slabW = Math.max(0.1, cellW - BRICK_GAP * 2);
-        const slabD = Math.max(0.1, cellD - BRICK_GAP * 2);
-        // Deeper than the mould proportion, and deeper again by the slope pad:
-        // the pad lifts the top to cover the uphill edge, so the body must grow
-        // downward too or the slab hovers over the downhill side of the cell.
-        const bodyH = Math.min(slabW, slabD) / 1.2 + pad + 8;
-        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - FAR_SINK - bodyH / 2);
+        // No BRICK_H quantization out here. Rounding each 40-unit cell up to a
+        // brick multiple stepped neighbouring slabs apart and, viewed at the
+        // grazing angle of flight, the field read as a bumpy waffle of tiles
+        // rather than solid ground. Following the smooth terrain height keeps
+        // gentle land flat; genuine relief (hills, pyramids) still steps.
+        const top = h + pad;
+        // Overlap neighbours slightly instead of leaving a BRICK_GAP: the gap
+        // showed as dark grid-lines from the air. Flat neighbours share a top
+        // plane so the tiny overlap only ever z-fights near-identical greens.
+        const slabW = cellW + 0.8;
+        const slabD = cellD + 0.8;
+        // Deep enough that a slab's underside always drops below its downhill
+        // neighbour's top, so a height step never opens a see-through gap.
+        const bodyH = Math.min(slabW, slabD) * 0.75 + pad + 20;
+        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + top - FAR_SINK - bodyH / 2);
         tmpScale.set(slabW, bodyH, slabD);
         tmpMat.compose(tmpPos, tmpQuat, tmpScale);
         this.farLand.setMatrixAt(fi, tmpMat);
 
         terrain.colorAt(tmpDir, h, tmpCol);
-        tmpCol.multiplyScalar(0.98 + hash2(row, c) * 0.08);
+        // Gentler per-cell shade jitter: 8% made each tile a visibly different
+        // green, reinforcing the grid; 3% just breaks up dead-flat colour.
+        tmpCol.multiplyScalar(0.99 + hash2(row, c) * 0.03);
         this.farLand.setColorAt(fi, tmpCol);
         fi++;
       }
