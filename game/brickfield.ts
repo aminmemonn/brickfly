@@ -295,33 +295,39 @@ export class BrickField {
         tangentBasis(tmpUp, tmpEast, tmpNorth);
         basisQuat(tmpEast, tmpUp, tmpNorth, tmpQuat);
 
-        const hq = Math.ceil(h / BRICK_H) * BRICK_H;
-        // A narrow physical seam is essential: overlapping the old bricks by
-        // 3% fused the entire field into one continuous slab. The visible body
-        // keeps the requested 1.6:1 mould proportion inside its grid pitch.
+        // Follow the smooth terrain height instead of rounding up to a BRICK_H
+        // step. The rounding stair-stepped adjacent rows; at the grazing angle
+        // of low flight each step's vertical face read as a dark band, so the
+        // ground looked like combed corduroy rather than solid brick. Studs,
+        // grid seams and colour keep the brick identity without the stepping.
+        const top = h;
         const brickW = Math.max(0.1, cellW - BRICK_GAP);
         const brickD = Math.max(0.1, cellD - BRICK_GAP);
-        const bodyH = Math.min(brickW, brickD) / BRICK_ASPECT;
-        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq - bodyH / 2);
+        // Body carries the 1.6:1 brick face plus extra depth to bury the height
+        // step to a downhill neighbour, so a slope never opens a see-through gap.
+        const bodyH = Math.min(brickW, brickD) / BRICK_ASPECT + 12;
+        tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + top - bodyH / 2);
         tmpScale.set(brickW, bodyH, brickD);
         tmpMat.compose(tmpPos, tmpQuat, tmpScale);
         this.land.setMatrixAt(li, tmpMat);
 
         terrain.colorAt(tmpDir, h, tmpCol);
-        tmpCol.multiplyScalar(0.98 + hash2(row, c) * 0.08);
+        // Gentle 3% shade jitter; 8% made each brick a visibly different green
+        // and reinforced the grid pattern at a distance.
+        tmpCol.multiplyScalar(0.99 + hash2(row, c) * 0.03);
         this.land.setColorAt(li, tmpCol);
         this.studGrid.setXY(li, studsEnabled ? 2 : 0, studsEnabled ? 2 : 0);
         li++;
 
         // Actual cylinders exist only in a circular 200-unit camera volume.
         // The body shader cross-fades to its procedural stud normal outside it.
-        const studTopCenter = tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + hq + STUD_H / 2);
+        const studTopCenter = tmpPos.copy(tmpDir).multiplyScalar(PLANET_R + top + STUD_H / 2);
         if (
           studsEnabled &&
           studTopCenter.distanceToSquared(cameraPosition) <= STUD_GEOMETRY_RADIUS * STUD_GEOMETRY_RADIUS &&
           si + 4 <= MAX_STUDS
         ) {
-          const topR = PLANET_R + hq + STUD_H / 2;
+          const topR = PLANET_R + top + STUD_H / 2;
           for (let sx = -1; sx <= 1; sx += 2) {
             for (let sz = -1; sz <= 1; sz += 2) {
               tmpPos
