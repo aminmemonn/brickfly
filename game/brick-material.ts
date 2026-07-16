@@ -186,8 +186,10 @@ const fragmentShader = /* glsl */ `
       // shallow contact ring. At this screen size it reads as a cylinder
       // without paying the cylinder vertex cost.
       vec2 radial = studCell / max(studRadius, 0.001);
-      normal = normalize(normal + (tangent * radial.x + bitangent * radial.y) * studRing * studBlend * 0.42);
-      baseColor *= 1.0 - studRing * studBlend * 0.075;
+      // Softer distant-stud relief: the full-strength fold made a field of
+      // terrain bricks shimmer into noise at grazing angles near the horizon.
+      normal = normalize(normal + (tangent * radial.x + bitangent * radial.y) * studRing * studBlend * 0.26);
+      baseColor *= 1.0 - studRing * studBlend * 0.05;
       studSurface = studCap * studBlend;
     #endif
 
@@ -259,8 +261,16 @@ export function createABSColoredMaterial(color: number): THREE.ShaderMaterial {
   return createMaterial({ ABS_UNIFORM_COLOR: 1 }, color);
 }
 
-/** Rounded unit brick with per-vertex contact/gap AO baked into its color. */
-export function makeABSBrickGeometry(): THREE.BufferGeometry {
+/**
+ * Rounded unit brick with per-vertex contact/gap AO baked into its color.
+ *
+ * `aoContrast` scales how dark the side/bottom mould-contact shading gets:
+ * 1 keeps the crisp per-brick separation that reads well on landmarks viewed
+ * up close; a lower value (used by the terrain field) lightens the vertical
+ * faces so a ground of thousands of bricks does not read as noise when seen
+ * edge-on at the grazing angle of low flight.
+ */
+export function makeABSBrickGeometry(aoContrast = 1): THREE.BufferGeometry {
   const geometry = new RoundedBoxGeometry(1, 1, 1, 1, 0.025);
   const position = geometry.attributes.position;
   const normal = geometry.attributes.normal;
@@ -285,6 +295,11 @@ export function makeABSBrickGeometry(): THREE.BufferGeometry {
     ao *= 1.0 - corner * (1.0 - top) * 0.055;
     ao = THREE.MathUtils.lerp(ao, 0.985, top);
     ao = THREE.MathUtils.lerp(ao, 0.66, bottom);
+
+    // Ease the dark side/bottom shading toward flat white by aoContrast so the
+    // terrain field can keep clean tops without its exposed faces reading as
+    // grazing-angle noise. Landmarks keep aoContrast = 1 for crisp separation.
+    ao = THREE.MathUtils.lerp(1.0, ao, aoContrast);
 
     colors[i * 3] = ao;
     colors[i * 3 + 1] = ao;

@@ -68,7 +68,11 @@ export class BrickField {
   constructor(private terrain: Terrain, preset: QualityPreset) {
     this.preset = preset;
 
-    const brickGeo = makeABSBrickGeometry();
+    // Terrain bricks use softened mould-contact AO (0.45) so the ground reads
+    // as a clean studded surface at grazing angles instead of a field of
+    // dark-edged cubes; landmarks/settlements keep the default crisp AO.
+    const TERRAIN_AO = 0.45;
+    const brickGeo = makeABSBrickGeometry(TERRAIN_AO);
     this.studGrid = makeStudGridAttribute(MAX_LAND);
     brickGeo.setAttribute('instanceStudGrid', this.studGrid);
     this.land = new THREE.InstancedMesh(brickGeo, ABS_BRICK_MATERIAL, MAX_LAND);
@@ -76,7 +80,7 @@ export class BrickField {
     this.studs = new THREE.InstancedMesh(makeABSStudGeometry(), ABS_STUD_MATERIAL, MAX_STUDS);
 
     // Coarse slabs never show stud normals — they live beyond the LOD range.
-    const farGeo = makeABSBrickGeometry();
+    const farGeo = makeABSBrickGeometry(TERRAIN_AO);
     farGeo.setAttribute('instanceStudGrid', makeStudGridAttribute(MAX_FAR));
     this.farLand = new THREE.InstancedMesh(farGeo, ABS_BRICK_MATERIAL, MAX_FAR);
 
@@ -240,7 +244,7 @@ export class BrickField {
         terrain.colorAt(tmpDir, h, tmpCol);
         // Gentler per-cell shade jitter: 8% made each tile a visibly different
         // green, reinforcing the grid; 3% just breaks up dead-flat colour.
-        tmpCol.multiplyScalar(0.99 + hash2(row, c) * 0.03);
+        tmpCol.multiplyScalar(0.995 + hash2(row, c) * 0.008);
         this.farLand.setColorAt(fi, tmpCol);
         fi++;
       }
@@ -301,8 +305,11 @@ export class BrickField {
         // ground looked like combed corduroy rather than solid brick. Studs,
         // grid seams and colour keep the brick identity without the stepping.
         const top = h;
-        const brickW = Math.max(0.1, cellW - BRICK_GAP);
-        const brickD = Math.max(0.1, cellD - BRICK_GAP);
+        // Bricks touch (slight overlap) rather than leaving a BRICK_GAP: the
+        // gap exposed a dark side-lip on every brick that compounded into
+        // grazing-angle noise. Flush tops read as one clean studded surface.
+        const brickW = cellW + 0.1;
+        const brickD = cellD + 0.1;
         // Body carries the 1.6:1 brick face plus extra depth to bury the height
         // step to a downhill neighbour, so a slope never opens a see-through gap.
         const bodyH = Math.min(brickW, brickD) / BRICK_ASPECT + 12;
@@ -314,7 +321,7 @@ export class BrickField {
         terrain.colorAt(tmpDir, h, tmpCol);
         // Gentle 3% shade jitter; 8% made each brick a visibly different green
         // and reinforced the grid pattern at a distance.
-        tmpCol.multiplyScalar(0.99 + hash2(row, c) * 0.03);
+        tmpCol.multiplyScalar(0.995 + hash2(row, c) * 0.008);
         this.land.setColorAt(li, tmpCol);
         this.studGrid.setXY(li, studsEnabled ? 2 : 0, studsEnabled ? 2 : 0);
         li++;
