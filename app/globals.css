@@ -199,3 +199,30 @@ input[type='range'].throttle-range::-moz-range-thumb {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   cursor: grab;
 }
+
+@keyframes photo-flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes photo-hint {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-photo-flash {
+  animation: photo-flash 0.45s ease-out forwards;
+}
+
+.animate-photo-hint {
+  animation: photo-hint 3.2s ease-in forwards;
+}

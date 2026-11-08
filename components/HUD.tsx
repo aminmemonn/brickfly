@@ -50,6 +50,8 @@ export default function HUD({ paused }: { paused: boolean }) {
   const [crashed, setCrashed] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [station, setStation] = useState('Sunny Bricks');
+  const [photo, setPhoto] = useState(false);
+  const [flash, setFlash] = useState(0);
 
   useEffect(() => {
     const offs = [
@@ -58,6 +60,8 @@ export default function HUD({ paused }: { paused: boolean }) {
       bus.on('region', (d) => setRegion(d as RegionInfo)),
       bus.on('camera', (m) => setCameraMode(m as CameraMode)),
       bus.on('radio', (s) => setStation(s as string)),
+      bus.on('photo', (on) => setPhoto(on as boolean)),
+      bus.on('photo-saved', () => setFlash((n) => n + 1)),
       bus.on('crash', () => setCrashed(true)),
       bus.on('respawn', () => setCrashed(false)),
       bus.on('discovered', (d) => {
@@ -82,6 +86,20 @@ export default function HUD({ paused }: { paused: boolean }) {
     while (delta > 180) delta -= 360;
     while (delta < -180) delta += 360;
     if (Math.abs(delta) <= 52) marks.push({ deg, offset: delta * 2.4 });
+  }
+
+  if (photo && !paused) {
+    return (
+      <div className="pointer-events-none fixed inset-0 z-10 select-none">
+        {flash > 0 && <div key={flash} className="animate-photo-flash absolute inset-0 bg-white" />}
+        <div key={`hint-${flash}`} className="animate-photo-hint absolute bottom-6 left-1/2 -translate-x-1/2">
+          <div className="glass rounded-full px-4 py-2 text-[11px] font-semibold text-white/80">
+            {flash > 0 ? 'Saved to downloads' : 'Photo mode'} · <span className="kbd">Enter</span> capture ·{' '}
+            <span className="kbd">P</span> exit
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -273,6 +291,9 @@ export default function HUD({ paused }: { paused: boolean }) {
               </span>
               <span>
                 <span className="kbd">H</span> toggle help
+              </span>
+              <span>
+                <span className="kbd">P</span> photo mode
               </span>
             </div>
           </div>

@@ -22,7 +22,7 @@ import { regionAt } from './regions';
 import { LANDMARKS } from './landmark-data';
 import { buildSettlements } from './settlements';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
-import { dirToLatLon, RAD2DEG, DEG2RAD } from './util';
+import { dirToLatLon, fileStamp, RAD2DEG, DEG2RAD } from './util';
 import { updateABSStudioLighting } from './brick-material';
 import { BrickStudPool } from './brick-stud-pool';
 
@@ -91,6 +91,7 @@ export class Game {
   private disposed = false;
 
   private dragging = false;
+  private photoMode = false;
   private lastPointer = { x: 0, y: 0 };
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -240,6 +241,7 @@ export class Game {
   }
 
   toMenu(): void {
+    this.setPhotoMode(false);
     this.mode = 'menu';
     this.menuAngle = Math.atan2(this.camera.position.z, this.camera.position.x);
   }
@@ -252,6 +254,24 @@ export class Game {
   setCameraMode(mode: CameraMode): void {
     this.rig.setMode(mode);
     bus.emit('camera', mode);
+  }
+
+  setPhotoMode(on: boolean): void {
+    if (this.photoMode === on) return;
+    this.photoMode = on;
+    bus.emit('photo', on);
+  }
+
+  /** Render a fresh frame and grab it before the drawing buffer is cleared. */
+  capturePhoto(): void {
+    this.renderer.render(this.scene, this.camera);
+    const url = this.canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brickfly-${fileStamp()}.png`;
+    a.click();
+    this.audio.click();
+    bus.emit('photo-saved');
   }
 
   setThrottle(v: number): void {
@@ -300,6 +320,14 @@ export class Game {
 
   private handleKey = (e: KeyboardEvent) => {
     if (this.mode !== 'playing') return;
+    if (e.code === 'KeyP') {
+      this.setPhotoMode(!this.photoMode);
+      return;
+    }
+    if (e.code === 'Enter' && this.photoMode) {
+      this.capturePhoto();
+      return;
+    }
     const idx = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
     if (idx >= 0) this.setCameraMode(idx as CameraMode);
   };
