@@ -115,3 +115,11 @@ export function sphereMap(
   outPos.y -= r;
   if (outTilt) outTilt.setFromUnitVectors(Y_AXIS, mapUp);
 }
+
+/** Local time as YYYYMMDD-HHMMSS, for screenshot filenames. */
+export function fileStamp(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${date}-${time}`;
+}
