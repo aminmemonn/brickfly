@@ -19,18 +19,15 @@ export default function GameApp() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [discovered, setDiscovered] = useState<string[]>([]);
-  const [dist, setDist] = useState(0);
 
   useEffect(() => {
     setSettings(loadSettings());
     if (canvasRef.current) createGame(canvasRef.current);
     const offReady = bus.on('ready', () => setPhase((p) => (p === 'boot' ? 'menu' : p)));
     const offCollection = bus.on('collection', (ids) => setDiscovered(ids as string[]));
-    const offHud = bus.on('hud', (d) => setDist(Math.round((d as { dist: number }).dist / 100) / 10));
     return () => {
       offReady();
       offCollection();
-      offHud();
     };
   }, []);
 
@@ -76,6 +73,9 @@ export default function GameApp() {
 
   const click = useCallback(() => getGame()?.uiClick(), []);
 
+  // The flight sim doesn't advance while paused, so this snapshot can't go stale.
+  const stats = phase === 'paused' ? getGame()?.sessionStats() : null;
+
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#06090f]">
       <canvas ref={canvasRef} className="fixed inset-0 h-full w-full" />
@@ -98,10 +98,20 @@ export default function GameApp() {
 
       {phase === 'paused' && !showSettings && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-sm animate-fade-in">
-          <div className="glass-strong w-80 rounded-3xl p-8 text-center">
+          <div className="glass-strong mx-4 w-full max-w-sm rounded-3xl p-8 text-center">
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/50">Paused</div>
-            <h2 className="font-display mb-2 text-3xl font-extrabold tracking-tight">BRICKFLY</h2>
-            <p className="mb-6 text-xs text-white/50">{dist.toFixed(1)} km flown this session</p>
+            <h2 className="font-display mb-5 text-3xl font-extrabold tracking-tight">BRICKFLY</h2>
+            {stats && (
+              <div className="mb-6 grid grid-cols-3 gap-2">
+                <PauseStat label="Flown" value={(stats.distance / 1000).toFixed(1)} unit="km" />
+                <PauseStat label="Top speed" value={String(Math.round(stats.topSpeed))} />
+                <PauseStat
+                  label="Landmarks"
+                  value={String(stats.landmarks)}
+                  note={stats.newLandmarks > 0 ? `${stats.newLandmarks} new` : undefined}
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => {
@@ -154,6 +164,19 @@ export default function GameApp() {
           are configured. */}
       <CloudSync />
       {phase === 'menu' && <AccountButton />}
+    </div>
+  );
+}
+
+function PauseStat({ label, value, unit, note }: { label: string; value: string; unit?: string; note?: string }) {
+  return (
+    <div className="glass min-w-0 rounded-2xl px-1.5 py-3">
+      <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.15em] text-white/45">{label}</div>
+      <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none">
+        {value}
+        {unit && <span className="ml-0.5 text-[10px] font-semibold text-white/50">{unit}</span>}
+      </div>
+      <div className="mt-1 h-3 text-[10px] font-semibold leading-3 text-[#f7d354]">{note}</div>
     </div>
   );
 }
