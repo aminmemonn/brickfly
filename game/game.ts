@@ -19,12 +19,13 @@ import { SkyLife } from './skylife';
 import { SeaLife } from './sealife';
 import { CityLife } from './life';
 import { regionAt } from './regions';
-import { LANDMARKS } from './landmark-data';
+import { LANDMARKS, LandmarkDef } from './landmark-data';
 import { buildSettlements } from './settlements';
 import { Settings, QUALITY_PRESETS, loadSettings } from './settings';
 import { dirToLatLon, fileStamp, RAD2DEG, DEG2RAD } from './util';
 import { updateABSStudioLighting } from './brick-material';
 import { BrickStudPool } from './brick-stud-pool';
+import { SessionStats, SessionStatsSnapshot } from './session-stats';
 
 export type GameMode = 'boot' | 'menu' | 'playing' | 'paused';
 
@@ -71,6 +72,7 @@ export class Game {
   private studPool: BrickStudPool;
   private audio = new AudioManager();
   private input = new Input();
+  private stats = new SessionStats();
 
   private ambientLight: THREE.AmbientLight;
   private sun: THREE.DirectionalLight;
@@ -201,6 +203,7 @@ export class Game {
     bus.on('crash', this.onCrash);
     bus.on('respawn', this.onRespawn);
     bus.on('discovered', () => this.audio.discover());
+    bus.on('landmark', this.onLandmark);
 
     this.applySettings(this.settings);
     this.mode = 'menu';
@@ -244,6 +247,10 @@ export class Game {
     this.setPhotoMode(false);
     this.mode = 'menu';
     this.menuAngle = Math.atan2(this.camera.position.z, this.camera.position.x);
+  }
+
+  sessionStats(): SessionStatsSnapshot {
+    return this.stats.snapshot(this.flight.distance);
   }
 
   uiClick(): void {
@@ -303,6 +310,11 @@ export class Game {
     vTmp.copy(this.flight.pos).normalize();
     this.explosion.trigger(this.flight.pos, this.flight.velocity, vTmp);
     this.plane.group.visible = false;
+  };
+
+  private onLandmark = (d: unknown) => {
+    const e = d as { def: LandmarkDef; isNew: boolean } | null;
+    if (e) this.stats.recordLandmark(e.def.id, e.isNew);
   };
 
   private onRespawn = () => {
@@ -369,6 +381,7 @@ export class Game {
 
     if (playing) {
       this.flight.update(dt, input);
+      this.stats.recordSpeed(this.flight.speed);
       this.syncPlane();
       this.plane.update(dt, input, this.flight.throttle);
       this.landmarks.update(this.flight.pos);
